@@ -52,7 +52,7 @@ class BistAdvisorTest {
         PriceScraper scraper = new PriceScraper(new org.mesutormanli.bistadvisor.config.AppConfig());
         List<String> rows = scraper.parse(json);
         assertFalse(rows.isEmpty());
-        // 1718640000 -> 2024-06-17 (UTC); Istanbul +3 -> 2024-06-18
+        // 1718640000 -> 2024-06-17 16:00 UTC; Istanbul +3 -> 2024-06-17 19:00
         assertTrue(rows.get(0).contains(",240.5,"));
     }
 }

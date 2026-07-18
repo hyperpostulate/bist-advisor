@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Ozellik vektorlerini ML modellerine beslenecek matrise cevirir.
- * Tum modeller double[][]] (satir = ornek, sutun = ozellik) ve int[] etiket kullanir.
+ * Tum modeller double[][] (satir = ornek, sutun = ozellik) ve int[] etiket kullanir.
  */
 public final class FeatureFrame {
 

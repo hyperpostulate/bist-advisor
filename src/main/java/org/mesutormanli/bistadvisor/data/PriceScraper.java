@@ -20,7 +20,7 @@ import java.util.List;
 
 /**
  * Yahoo Finance uzerinden gecmis gunluk OHLCV serisi ceker.
- * BIST sembolleri "IS:THYAO" formatiyla sorgulanir.
+ * BIST sembolleri "THYAO.IS" formatiyla sorgulanir.
  *
  * Donen her satir: tarih,acilis,yuksek,dusuk,kapanis,hacim
  */

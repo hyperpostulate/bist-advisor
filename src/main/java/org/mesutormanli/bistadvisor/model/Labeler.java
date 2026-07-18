@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Geçmiş fiyat serisinden öğrenme etiketi üretir.
- * N gün sonrası getiriye göre: üst %30 AL, alt %30 SAT, orta TUT.
+ * N gün sonrası getiriye göre: >%5 AL, <-%5 SAT, arada TUT.
  */
 public final class Labeler {
     public static final int BUY = 0;
