@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BIST Portföy Danışmanı</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Arial, sans-serif; margin: 0; background: #0f1419; color: #e6e6e6; }
+  header { background: #16202c; padding: 16px 24px; border-bottom: 1px solid #243; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { margin: 0; font-size: 18px; color: #4cd137; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px; }
+  .card { background: #16202c; border: 1px solid #243; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { margin-top: 0; font-size: 15px; color: #4cd137; }
+  label { display: block; font-size: 12px; margin: 8px 0 4px; color: #9aa; }
+  input, select, button { padding: 8px; border-radius: 6px; border: 1px solid #345; background: #0f1419; color: #e6e6e6; font-size: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+  button { background: #4cd137; color: #0f1419; border: none; font-weight: 600; cursor: pointer; }
+  button:hover { opacity: .9; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #234; }
+  th { color: #9aa; font-weight: 500; }
+  .al { color: #4cd137; } .sat { color: #e84118; } .tut { color: #fbc531; }
+  .disc { font-size: 11px; color: #778; margin-top: 12px; }
+  .posbox { border: 1px solid #345; border-radius: 6px; padding: 8px; margin: 6px 0; }
+  .small { font-size: 12px; color: #9aa; }
+  .lang { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .lang .lbl { color: #9aa; }
+  .switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; user-select: none; }
+  .switch input { display: none; }
+  .switch .track { width: 50px; height: 24px; background: #345; border-radius: 12px; position: relative; transition: background .2s; }
+  .switch .thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #e6e6e6; border-radius: 50%; transition: left .2s; }
+  .switch.en input:checked + .track .thumb { left: 28px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 data-i18n="appTitle">BIST Portföy Danışmanı</h1>
+  <div class="lang">
+    <span class="lbl">TR</span>
+    <label class="switch" id="switchTr">
+      <input type="checkbox" onchange="onToggle(this.checked)">
+      <span class="track"><span class="thumb"></span></span>
+    </label>
+    <span class="lbl">EN</span>
+  </div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2 data-i18n="currentPortfolio">Mevcut Portföy</h2>
+    <div class="row" style="margin-bottom:12px">
+      <div><label data-i18n="budget">Bütçe (TL)</label><input id="budget" type="number" min="0" step="0.01" style="width:160px"></div>
+      <button onclick="saveBudget()" data-i18n="updateBudget">Bütçeyi Güncelle</button>
+    </div>
+    <div id="portfolioView"></div>
+    <div class="row" style="margin-top:12px">
+      <div><label data-i18n="instrument">Enstrüman</label><input id="addSymbol" type="text" placeholder="THYAO"></div>
+      <div><label data-i18n="lots">Lot</label><input id="addLots" type="number" min="1" placeholder="100"></div>
+      <div><label data-i18n="unitCost">Birim Maliyet</label><input id="addCost" type="number" min="0" step="0.01" placeholder="240"></div>
+      <button onclick="addPosition()" data-i18n="add">Ekle</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="dailyAnalysis">Günlük Analiz</h2>
+    <div class="row">
+      <div><label data-i18n="index">Endeks</label>
+        <select id="index"></select>
+      </div>
+      <div><label data-i18n="mode">Mod</label>
+        <select id="mode">
+          <option value="CONSERVATIVE" data-i18n="modeConservative">TEMKİNLİ</option>
+          <option value="BALANCED" selected data-i18n="modeBalanced">DENGELİ</option>
+          <option value="AGGRESSIVE" data-i18n="modeAggressive">AGRESİF</option>
+        </select>
+      </div>
+      <div><label data-i18n="mlModel">ML Modeli</label>
+        <select id="model">
+          <option value="RANDOM_FOREST" selected>RandomForest</option>
+          <option value="SVM">SVM</option>
+          <option value="KNN">KNN</option>
+        </select>
+      </div>
+      <button onclick="saveSettings()" data-i18n="save">Kaydet</button>
+    </div>
+    <div style="margin-top:12px"><button onclick="analyze()" data-i18n="analyze">Analiz Et</button></div>
+    <div id="analysis"></div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="txConfirm">İşlem Onayı</h2>
+    <div class="small" data-i18n="txHint">TUT önerileri hariç; AL ve SAT önerileri listelenir. Yapılan işlemlerin yanındaki kutuyu işaretleyip lot ve birim fiyatı girin, sonra "Onayla"ya basın.</div>
+    <div id="confirmArea"><p class="small" data-i18n="txEmpty">Önce "Analiz Et" ile önerileri getirin.</p></div>
+    <button onclick="confirmTx()" data-i18n="confirm">Onayla</button>
+  </div>
+
+  <div class="disc" data-i18n="disclaimer">Yatırım tavsiyesi değildir. Bilgilendirme amaçlıdır. Veriler Yahoo Finance üzerinden çekilir; gecikmeli/eksik olabilir.</div>
+</div>
+
+<script>
+const I18N = {
+  tr: {
+    appTitle: "BIST Portföy Danışmanı",
+    currentPortfolio: "Mevcut Portföy",
+    budget: "Bütçe (TL)",
+    updateBudget: "Bütçeyi Güncelle",
+    instrument: "Enstrüman",
+    lots: "Lot",
+    unitCost: "Birim Maliyet",
+    add: "Ekle",
+    dailyAnalysis: "Günlük Analiz",
+    index: "Endeks",
+    mode: "Mod",
+    modeConservative: "TEMKİNLİ",
+    modeBalanced: "DENGELİ",
+    modeAggressive: "AGRESİF",
+    mlModel: "ML Modeli",
+    save: "Kaydet",
+    analyze: "Analiz Et",
+    txConfirm: "İşlem Onayı",
+    txHint: 'TUT önerileri hariç; AL ve SAT önerileri listelenir. Yapılan işlemlerin yanındaki kutuyu işaretleyip lot ve birim fiyatı girin, sonra "Onayla"ya basın.',
+    txEmpty: 'Önce "Analiz Et" ile önerileri getirin.',
+    confirm: "Onayla",
+    disclaimer: "Yatırım tavsiyesi değildir. Bilgilendirme amaçlıdır. Veriler Yahoo Finance üzerinden çekilir; gecikmeli/eksik olabilir.",
+    settingsSaved: "Ayarlar kaydedildi",
+    enterBudgetLotCost: "Enstrüman, lot ve birim maliyet girin.",
+    maxPositions: "Maksimum 5 pozisyon.",
+    noTxSelected: "Hiçbir işlem seçilmedi.",
+    txApplied: "İşlemler uygulandı: ",
+    availableCash: "Kullanılabilir nakit",
+    position: "Pozisyon",
+    holdingsTitle: "Mevcut Portföy (SAT önerileri önce)",
+    buysTitle: "Al Önerileri",
+    remainingSlots: "kalan slot",
+    noBuy: "Al önerisi yok (slot dolu veya eşik altı)",
+    colNo: "#",
+    colSymbol: "Sembol",
+    colAction: "İşlem",
+    colLots: "Lot",
+    colPrice: "Fiyat",
+    colNote: "Not",
+    colScore: "Skor",
+    colUnitCost: "Birim Maliyet",
+    colTotalCost: "Toplam Maliyet",
+    colCurrentPrice: "Güncel Birim",
+    colCurrentTotal: "Güncel Toplam",
+    colRemove: "",
+    total: "TOPLAM",
+    noPositions: "Henüz pozisyon yok. Aşağıdan enstrüman ekleyin.",
+    confirmEmpty: "Onaylanacak AL/SAT önerisi yok.",
+    sugLot: "Öneri Lot",
+    sugPrice: "Öneri Fiyat",
+    realLots: "Lot (gerçek)",
+    realPrice: "Birim Fiyat (gerçek)",
+    removed: " silindi"
+  },
+  en: {
+    appTitle: "BIST Portfolio Advisor",
+    currentPortfolio: "Current Portfolio",
+    budget: "Budget (TL)",
+    updateBudget: "Update Budget",
+    instrument: "Instrument",
+    lots: "Lots",
+    unitCost: "Unit Cost",
+    add: "Add",
+    dailyAnalysis: "Daily Analysis",
+    index: "Index",
+    mode: "Mode",
+    modeConservative: "CONSERVATIVE",
+    modeBalanced: "BALANCED",
+    modeAggressive: "AGGRESSIVE",
+    mlModel: "ML Model",
+    save: "Save",
+    analyze: "Analyze",
+    txConfirm: "Transaction Confirmation",
+    txHint: 'Except HOLD; BUY and SELL recommendations are listed. Tick the box next to each transaction, enter lot and unit price, then press "Confirm".',
+    txEmpty: 'Click "Analyze" first to fetch recommendations.',
+    confirm: "Confirm",
+    disclaimer: "Not an investment recommendation. For informational purposes only. Data is fetched via Yahoo Finance; may be delayed/incomplete.",
+    settingsSaved: "Settings saved",
+    enterBudgetLotCost: "Enter instrument, lots and unit cost.",
+    maxPositions: "Maximum 5 positions.",
+    noTxSelected: "No transaction selected.",
+    txApplied: "Transactions applied: ",
+    availableCash: "Available cash",
+    position: "Position",
+    holdingsTitle: "Current Portfolio (SELL first)",
+    buysTitle: "Buy Recommendations",
+    remainingSlots: "remaining slots",
+    noBuy: "No buy recommendation (slots full or below threshold)",
+    colNo: "#",
+    colSymbol: "Symbol",
+    colAction: "Action",
+    colLots: "Lots",
+    colPrice: "Price",
+    colNote: "Note",
+    colScore: "Score",
+    colUnitCost: "Unit Cost",
+    colTotalCost: "Total Cost",
+    colCurrentPrice: "Current Unit",
+    colCurrentTotal: "Current Total",
+    colRemove: "",
+    total: "TOTAL",
+    noPositions: "No positions yet. Add an instrument below.",
+    confirmEmpty: "No BUY/SELL recommendation to confirm.",
+    sugLot: "Sug. Lots",
+    sugPrice: "Sug. Price",
+    realLots: "Real Lots",
+    realPrice: "Real Unit Price",
+    removed: " removed"
+  }
+};
+
+let LANG = localStorage.getItem('bist_lang') || 'tr';
+
+function t(key) {
+  const dict = I18N[LANG] || I18N.tr;
+  return dict[key] !== undefined ? dict[key] : key;
+}
+
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key) el.textContent = t(key);
+  });
+  document.documentElement.lang = LANG;
+  const sw = document.querySelector('#switchTr input');
+  if (sw) sw.checked = (LANG === 'en');
+  const swLabel = document.getElementById('switchTr');
+  if (swLabel) swLabel.classList.toggle('en', LANG === 'en');
+}
+
+function setLang(lang) {
+  LANG = lang;
+  localStorage.setItem('bist_lang', lang);
+  applyLang();
+  if (typeof renderPortfolioCurrent === 'function') renderPortfolioCurrent();
+  if (window._lastAnalysis) render(window._lastAnalysis), renderConfirm(window._lastAnalysis);
+}
+
+function onToggle(checked) {
+  setLang(checked ? 'en' : 'tr');
+}
+
+async function saveSettings() {
+  const st = await getState();
+  st.advisorMode = document.getElementById('mode').value;
+  st.modelType = document.getElementById('model').value;
+  st.selectedIndex = document.getElementById('index').value;
+  await post('/api/portfolio', st);
+  alert(t('settingsSaved'));
+}
+async function addPosition() {
+  const sym = document.getElementById('addSymbol').value.trim().toUpperCase();
+  const lots = +document.getElementById('addLots').value;
+  const cost = +document.getElementById('addCost').value;
+  if (!sym || lots <= 0 || cost <= 0) { alert(t('enterBudgetLotCost')); return; }
+  const st = await getState();
+  const existing = st.positions.find(p => p.symbol === sym);
+  if (existing) {
+    const totalLots = existing.lots + lots;
+    existing.avgCost = (existing.avgCost * existing.lots + cost * lots) / totalLots;
+    existing.lots = totalLots;
+  } else {
+    if (st.positions.length >= 5) { alert(t('maxPositions')); return; }
+    st.positions.push({symbol: sym, lots, avgCost: cost});
+  }
+  await post('/api/portfolio', st);
+  document.getElementById('addSymbol').value = '';
+  document.getElementById('addLots').value = '';
+  document.getElementById('addCost').value = '';
+  await loadPortfolio();
+}
+async function removePosition(sym) {
+  const st = await getState();
+  st.positions = st.positions.filter(p => p.symbol !== sym);
+  await post('/api/portfolio', st);
+  await loadPortfolio();
+  alert(sym + t('removed'));
+}
+async function loadPortfolio() {
+  const v = await (await fetch('/api/portfolio-view')).json();
+  renderPortfolio(v);
+}
+async function analyze() {
+  const res = await post('/api/analyze', {});
+  window._lastAnalysis = res;
+  render(res);
+  renderConfirm(res);
+  await loadPortfolio();
+}
+async function confirmTx() {
+  const reqs = [];
+  document.querySelectorAll('#confirmArea input[type=checkbox]').forEach(cb => {
+    if (!cb.checked) return;
+    const row = cb.closest('tr');
+    const symbol = cb.dataset.symbol;
+    const action = cb.dataset.action;
+    const lots = +row.querySelector('.c-lots').value || 0;
+    const price = +row.querySelector('.c-price').value || 0;
+    reqs.push({symbol, action, lots, price});
+  });
+  if (reqs.length === 0) { alert(t('noTxSelected')); return; }
+  await post('/api/confirm', reqs);
+  alert(t('txApplied') + reqs.length);
+  analyze();
+}
+async function getState(){ return await(await fetch('/api/portfolio')).json(); }
+async function post(u,b){ return await(await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json(); }
+
+function render(r) {
+  let h = '<p class="small">' + t('availableCash') + ': ' + fmt(r.availableCash) + ' TL | ' + t('position') + ': ' + r.positionCount + '/' + r.maxPositions + '</p>';
+  h += '<h3 style="color:#9aa;font-size:13px">' + t('holdingsTitle') + '</h3><table><tr><th>' + t('colNo') + '</th><th>' + t('colSymbol') + '</th><th>' + t('colAction') + '</th><th>' + t('colLots') + '</th><th>' + t('colPrice') + '</th><th>' + t('colNote') + '</th></tr>';
+  for (const x of r.holdings) h += row(x);
+  h += '</table>';
+  h += '<h3 style="color:#9aa;font-size:13px">' + t('buysTitle') + ' <span class="small">(' + t('remainingSlots') + ': ' + r.buySlots + '/' + r.maxPositions + ')</span></h3><table><tr><th>' + t('colNo') + '</th><th>' + t('colSymbol') + '</th><th>' + t('colAction') + '</th><th>' + t('colLots') + '</th><th>' + t('colPrice') + '</th><th>' + t('colScore') + '</th></tr>';
+  if (r.buys.length===0) h += '<tr><td colspan="6" class="small">' + t('noBuy') + '</td></tr>';
+  for (const x of r.buys) h += row(x);
+  h += '</table>';
+  document.getElementById('analysis').innerHTML = h;
+}
+function row(x){
+  const cls = x.action==='AL'?'al':(x.action==='SAT'?'sat':'tut');
+  const sc = x.score?x.score.toFixed(2):'-';
+  return `<tr><td>${x.index}</td><td>${x.symbol}</td><td class="${cls}">${x.action}</td><td>${x.lots}</td><td>${fmt(x.price)}</td><td>${x.note||sc}</td></tr>`;
+}
+function renderConfirm(r) {
+  const items = [];
+  for (const x of r.holdings) if (x.action === 'SAT') items.push(x);
+  for (const x of r.buys) if (x.action === 'AL') items.push(x);
+  if (items.length === 0) {
+    document.getElementById('confirmArea').innerHTML = '<p class="small">' + t('confirmEmpty') + '</p>';
+    return;
+  }
+  let h = '<table><tr><th></th><th>' + t('colSymbol') + '</th><th>' + t('colAction') + '</th><th>' + t('sugLot') + '</th><th>' + t('sugPrice') + '</th><th>' + t('realLots') + '</th><th>' + t('realPrice') + '</th></tr>';
+  for (const x of items) {
+    const cls = x.action==='AL'?'al':(x.action==='SAT'?'sat':'tut');
+    h += `<tr>
+      <td><input type="checkbox" data-symbol="${x.symbol}" data-action="${x.action}"></td>
+      <td>${x.symbol}</td>
+      <td class="${cls}">${x.action}</td>
+      <td>${x.lots}</td>
+      <td>${fmt(x.price)}</td>
+      <td><input class="c-lots" type="number" min="0" value="${x.lots}" style="width:80px"></td>
+      <td><input class="c-price" type="number" min="0" step="0.01" value="${x.price}" style="width:90px"></td>
+    </tr>`;
+  }
+  h += '</table>';
+  document.getElementById('confirmArea').innerHTML = h;
+}
+function fmt(n){ return (n==null?'0':n.toLocaleString(LANG==='en'?'en-US':'tr-TR',{maximumFractionDigits:2})); }
+
+async function saveBudget() {
+  const b = +document.getElementById('budget').value;
+  if (!(b >= 0)) { alert('Geçerli bir bütçe girin.'); return; }
+  const st = await getState();
+  st.budget = b;
+  await post('/api/portfolio', st);
+  await loadPortfolio();
+}
+
+function renderPortfolio(v) {
+  const bInput = document.getElementById('budget');
+  if (bInput && (bInput.value === '' || bInput.value == null)) bInput.value = v.budget;
+  let h = '<p class="small">' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/5</p>';
+  if (v.positions.length === 0) {
+    h += '<p class="small">' + t('noPositions') + '</p>';
+  } else {
+    h += '<table><tr><th>' + t('colSymbol') + '</th><th>' + t('colLots') + '</th><th>' + t('colUnitCost') + '</th><th>' + t('colTotalCost') + '</th><th>' + t('colCurrentPrice') + '</th><th>' + t('colCurrentTotal') + '</th><th></th></tr>';
+    for (const p of v.positions) {
+      h += `<tr>
+        <td>${p.symbol}</td>
+        <td>${p.lots}</td>
+        <td>${fmt(p.avgCost)}</td>
+        <td>${fmt(p.costTotal)}</td>
+        <td>${fmt(p.currentPrice)}</td>
+        <td>${fmt(p.currentTotal)}</td>
+        <td><button style="background:#e84118;padding:4px 8px;font-size:12px" onclick="removePosition('${p.symbol}')">✕</button></td>
+      </tr>`;
+    }
+    h += `<tr style="font-weight:600;border-top:2px solid #345"><td colspan="3">${t('total')}</td><td>${fmt(v.totalInvested)}</td><td></td><td>${fmt(v.totalCurrent)}</td><td></td></tr>`;
+    h += '</table>';
+  }
+  document.getElementById('portfolioView').innerHTML = h;
+}
+
+async function renderPortfolioCurrent() {
+  const v = await (await fetch('/api/portfolio-view')).json();
+  renderPortfolio(v);
+}
+
+(async function init(){
+  const cfg = await (await fetch('/api/config')).json();
+  const idxSel = document.getElementById('index');
+  for (const ix of cfg.indices) {
+    const o = document.createElement('option');
+    o.value = ix; o.textContent = ix;
+    idxSel.appendChild(o);
+  }
+  idxSel.value = cfg.currentIndex || 'BIST_30';
+  document.getElementById('mode').value = cfg.currentMode;
+  document.getElementById('model').value = cfg.currentModel;
+  applyLang();
+  await loadPortfolio();
+})();
+</script>
+</body>
+</html>
