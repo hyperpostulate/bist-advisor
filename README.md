@@ -2,7 +2,7 @@
 
 [![Java CI](https://github.com/hyperpostulate/bist-advisor/actions/workflows/maven.yml/badge.svg)](https://github.com/hyperpostulate/bist-advisor/actions/workflows/maven.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-BIST-30 Portföy Danışmanı. CLI ve Web arayüzlü, SMILE ML modelleri (RandomForest / SVM / KNN) ve Yahoo Finance canlı verisi kullanan Spring Boot uygulaması.
+BIST Portföy Danışmanı. CLI ve Web arayüzlü, SMILE ML modelleri (RandomForest / SVM / KNN) ve Yahoo Finance canlı verisi kullanan Spring Boot uygulaması.
 
 ---
 
@@ -391,7 +391,7 @@ Bu proje GNU General Public License v3.0 altında lisanslanmıştır. Detaylı b
 
 ![Java CI](https://github.com/hyperpostulate/bist-advisor/actions/workflows/maven.yml/badge.svg) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-BIST-30 Portfolio Advisor. Spring Boot application with CLI and Web interfaces, SMILE ML models (RandomForest / SVM / KNN), and Yahoo Finance live data.
+BIST Portfolio Advisor. Spring Boot application with CLI and Web interfaces, SMILE ML models (RandomForest / SVM / KNN), and Yahoo Finance live data.
 
 ---
 
