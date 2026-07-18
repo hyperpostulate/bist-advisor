@@ -31,9 +31,8 @@ public class SvmStrategy implements ModelStrategy {
         double bestScore = -1;
         int bestClass = 0;
         for (int c = 0; c < numClasses; c++) {
-            // binary SVM: 1 sinifi bu sinif, 0 digerleri. Skoru 1 sinifi olasiligi olarak al.
-            int pred = binaries.get(c).predict(features);
-            double score = (pred == 1) ? 0.6 : 0.4;
+            double decision = binaries.get(c).score(features);
+            double score = 1.0 / (1.0 + Math.exp(-decision));
             if (score > bestScore) {
                 bestScore = score;
                 bestClass = c;

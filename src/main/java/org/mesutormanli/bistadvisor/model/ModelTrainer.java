@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,7 +35,7 @@ public class ModelTrainer {
     private final PriceScraper priceScraper;
     private final YahooFundamentalsScraper fundamentalsScraper;
     private final CacheStore cacheStore;
-    private final Map<ModelType, ModelStrategy> cache = new EnumMap<>(ModelType.class);
+    private final Map<String, ModelStrategy> cache = new HashMap<>();
 
     public ModelTrainer(AppConfig appConfig, BistIndices bistIndices,
                         PriceScraper priceScraper,
@@ -47,8 +47,13 @@ public class ModelTrainer {
         this.cacheStore = cacheStore;
     }
 
+    private static String cacheKey(ModelType type, String indexName) {
+        return type.name() + ":" + (indexName != null ? indexName.toUpperCase() : "");
+    }
+
     public ModelStrategy getOrTrain(ModelType type, String indexName) {
-        ModelStrategy s = cache.get(type);
+        String key = cacheKey(type, indexName);
+        ModelStrategy s = cache.get(key);
         if (s != null) return s;
         double[][] x;
         int[] y;
@@ -61,22 +66,27 @@ public class ModelTrainer {
             x = sampleFeatures(30);
             y = sampleLabels(30);
         }
-        s = train(type, x, y);
-        return s;
+        ModelStrategy strategy = ModelStrategyFactory.create(type);
+        strategy.train(x, y);
+        cache.put(key, strategy);
+        log.info("Model egitildi (bellekte): {}:{} (ornek={})", type, indexName, y.length);
+        return strategy;
     }
 
-    public ModelStrategy train(ModelType type, double[][] features, int[] labels) {
+    private ModelStrategy train(ModelType type, double[][] features, int[] labels) {
         ModelStrategy strategy = ModelStrategyFactory.create(type);
         strategy.train(features, labels);
-        cache.put(type, strategy);
-        log.info("Model egitildi (bellekte): {} (ornek={})", type, labels.length);
         return strategy;
     }
 
     /** CLI 'train' komutu icin canli veriyle egitim (secili endeks). */
     public ModelStrategy train(ModelType type, String indexName) {
         TrainingSet ts = buildTrainingSet(indexName);
-        return train(type, ts.features, ts.labels);
+        ModelStrategy s = train(type, ts.features, ts.labels);
+        String key = cacheKey(type, indexName);
+        cache.put(key, s);
+        log.info("Model egitildi (bellekte): {}:{} (ornek={})", type, indexName, ts.labels.length);
+        return s;
     }
 
     /** Secili endeks evreninden teknik + temel ozellik matrisi ve getiri tabanli etiketler uretir. */

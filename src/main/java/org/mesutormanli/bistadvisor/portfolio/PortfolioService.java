@@ -32,76 +32,94 @@ public class PortfolioService {
         this.state = load();
     }
 
-    public PortfolioState getState() {
+    public synchronized PortfolioState getState() {
         return state;
     }
 
-    public void save(PortfolioState newState) {
+    public synchronized void save(PortfolioState newState) {
         this.state = newState;
         write();
     }
 
     /** Kullanilabilir nakit = butce - mevcut pozisyon degerleri (guncel fiyat map ile). */
-    public double availableCash(java.util.Map<String, Double> currentPrices) {
+    public synchronized double availableCash(java.util.Map<String, Double> currentPrices) {
+        if (state.positions == null) return state.budget;
         double invested = state.positions.stream()
                 .mapToDouble(p -> p.lots * currentPrices.getOrDefault(p.symbol, p.avgCost))
                 .sum();
         return Math.max(0.0, state.budget - invested);
     }
 
-    public boolean canAddPosition() {
-        return state.positions.size() < MAX_POSITIONS;
+    public synchronized boolean canAddPosition() {
+        return state.positions != null && state.positions.size() < MAX_POSITIONS;
     }
 
-    public int maxPositions() {
+    public synchronized int maxPositions() {
         return MAX_POSITIONS;
     }
 
     /** SAT sonrasi acilan slot da dahil, alim icin kullanilabilir maksimum yeni pozisyon. */
-    public int buySlotsAfter(int sellCount) {
-        int remaining = MAX_POSITIONS - (state.positions.size() - sellCount);
+    public synchronized int buySlotsAfter(int sellCount) {
+        int posCount = state.positions != null ? state.positions.size() : 0;
+        int remaining = MAX_POSITIONS - (posCount - sellCount);
         return Math.max(0, Math.min(remaining, MAX_POSITIONS));
     }
 
-    public int currentPositionCount() {
-        return state.positions.size();
+    public synchronized int currentPositionCount() {
+        return state.positions != null ? state.positions.size() : 0;
     }
 
-    public AdvisorMode advisorMode() {
+    public synchronized AdvisorMode advisorMode() {
         return AdvisorMode.fromLabel(state.advisorMode);
     }
 
-    public ModelType modelType() {
+    public synchronized ModelType modelType() {
         return ModelType.fromKey(state.modelType);
     }
 
     /** Gerceklesen islemi state'e isler (web onay kutusundan gelir). */
-    public void applyTransaction(String symbol, String action, int lots, double price) {
+    public synchronized void applyTransaction(String symbol, String action, int lots, double price) {
+        if (symbol == null || symbol.isBlank()) {
+            log.warn("applyTransaction: sembol bos, islem atlandi");
+            return;
+        }
+        if (lots <= 0) {
+            log.warn("applyTransaction: lot sayisi pozitif olmali ({}), islem atlandi", lots);
+            return;
+        }
+        if (price <= 0) {
+            log.warn("applyTransaction: fiyat pozitif olmali ({}), islem atlandi", price);
+            return;
+        }
+        if (state.positions == null) state.positions = new java.util.ArrayList<>();
+
         Position p = state.positions.stream()
-                .filter(x -> x.symbol.equalsIgnoreCase(symbol))
+                .filter(x -> x.symbol.equalsIgnoreCase(symbol.trim()))
                 .findFirst().orElse(null);
 
-        if ("AL".equalsIgnoreCase(action)) {
+        if ("AL".equalsIgnoreCase(action.trim())) {
             if (p != null) {
-                // Mevcut pozisyona ekleme: agirlikli ortalama maliyet guncellenir
-                int addLots = lots > 0 ? lots : (int) Math.floor(state.budget / price);
-                if (addLots > 0) {
-                    int totalLots = p.lots + addLots;
-                    p.avgCost = (p.avgCost * p.lots + price * addLots) / totalLots;
-                    p.lots = totalLots;
-                }
+                int addLots = lots;
+                int totalLots = p.lots + addLots;
+                p.avgCost = (p.avgCost * p.lots + price * addLots) / totalLots;
+                p.lots = totalLots;
             } else {
-                // Yeni pozisyon ac (maks 5 siniri)
-                if (canAddPosition() && lots > 0 && price > 0) {
-                    state.positions.add(new Position(symbol.toUpperCase(), lots, price));
+                if (canAddPosition()) {
+                    state.positions.add(new Position(symbol.trim().toUpperCase(), lots, price));
+                } else {
+                    log.warn("applyTransaction: maks {} pozisyon siniri, {} eklenemedi", MAX_POSITIONS, symbol);
                 }
             }
-        } else if ("SAT".equalsIgnoreCase(action)) {
+        } else if ("SAT".equalsIgnoreCase(action.trim())) {
             if (p != null) {
-                int sellLots = lots > 0 ? Math.min(lots, p.lots) : p.lots;
+                int sellLots = Math.min(lots, p.lots);
                 p.lots -= sellLots;
                 if (p.lots <= 0) state.positions.remove(p);
+            } else {
+                log.warn("applyTransaction: SAT istegi ama {} portfoyde bulunamadi", symbol);
             }
+        } else {
+            log.warn("applyTransaction: gecersiz islem ({})", action);
         }
     }
 
