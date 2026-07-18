@@ -51,7 +51,7 @@ public class ModelTrainer {
         return type.name() + ":" + (indexName != null ? indexName.toUpperCase() : "");
     }
 
-    public ModelStrategy getOrTrain(ModelType type, String indexName) {
+    public synchronized ModelStrategy getOrTrain(ModelType type, String indexName) {
         String key = cacheKey(type, indexName);
         ModelStrategy s = cache.get(key);
         if (s != null) return s;

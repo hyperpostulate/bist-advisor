@@ -131,15 +131,16 @@ public class PriceScraper {
             JsonNode lows = quotes.path("low");
             JsonNode closes = quotes.path("close");
             JsonNode vols = quotes.path("volume");
-            for (int i = 0; i < timestamps.size(); i++) {
-                if (closes.get(i).isNull()) continue;
+            int n = timestamps.size();
+            for (int i = 0; i < n; i++) {
+                if (i >= closes.size() || closes.get(i).isNull()) continue;
                 LocalDate d = Instant.ofEpochSecond(timestamps.get(i).asLong())
                         .atZone(ZoneId.of("Europe/Istanbul")).toLocalDate();
                 double open = safe(opens, i);
                 double high = safe(highs, i);
                 double low = safe(lows, i);
                 double close = closes.get(i).asDouble();
-                double vol = vols.get(i).isNull() ? 0.0 : vols.get(i).asDouble();
+                double vol = i < vols.size() && !vols.get(i).isNull() ? vols.get(i).asDouble() : 0.0;
                 rows.add(d + "," + open + "," + high + "," + low + "," + close + "," + (long) vol);
             }
         } catch (Exception e) {
@@ -149,6 +150,8 @@ public class PriceScraper {
     }
 
     private double safe(JsonNode arr, int i) {
-        return arr.get(i).isNull() ? 0.0 : arr.get(i).asDouble();
+        if (i >= arr.size()) return 0.0;
+        JsonNode v = arr.get(i);
+        return v == null || v.isNull() ? 0.0 : v.asDouble();
     }
 }

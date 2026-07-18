@@ -63,8 +63,8 @@ public final class FeatureVector {
         fk = clamp(fk / 50.0);
         pdDd = clamp(pdDd / 10.0);
         dividendYield = clamp(dividendYield / 10.0);
-        profitGrowth = clamp((profitGrowth + 50) / 100.0);
-        roe = clamp((roe + 50) / 100.0);
+        profitGrowth = clamp((profitGrowth * 100.0 + 50.0) / 100.0);
+        roe = clamp((roe * 100.0 + 50.0) / 100.0);
     }
 
     private static double clamp(double v) {

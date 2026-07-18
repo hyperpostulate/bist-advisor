@@ -51,9 +51,8 @@ public class RandomForestStrategy implements ModelStrategy {
         int bestClass = 0;
         for (int c = 0; c < NUM_CLASSES; c++) {
             double[] prob = new double[2];
-            int pred = forests.get(c).predict(t, prob);
-            // pred: 1 => bu sinif, 0 => digerleri. Skor = bu sinif olasiligi
-            double score = (pred == 1 && prob.length == 2) ? prob[1] : (pred == 0 && prob.length == 2 ? prob[0] : 0.5);
+            forests.get(c).predict(t, prob);
+            double score = prob.length >= 2 ? prob[1] : 0.5;
             if (score > bestScore) {
                 bestScore = score;
                 bestClass = c;
