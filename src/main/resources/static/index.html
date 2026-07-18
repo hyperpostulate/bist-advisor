@@ -84,7 +84,10 @@
       </div>
       <button onclick="saveSettings()" data-i18n="save">Kaydet</button>
     </div>
-    <div style="margin-top:12px"><button onclick="analyze()" data-i18n="analyze">Analiz Et</button></div>
+    <div class="row" style="margin-top:12px;align-items:center">
+      <button id="analyzeBtn" onclick="analyze()" data-i18n="analyze">Analiz Et</button>
+      <span id="analyzeStatus" class="small" style="margin-left:10px"></span>
+    </div>
     <div id="analysis"></div>
   </div>
 
@@ -153,7 +156,10 @@ const I18N = {
     sugPrice: "Öneri Fiyat",
     realLots: "Lot (gerçek)",
     realPrice: "Birim Fiyat (gerçek)",
-    removed: " silindi"
+    removed: " silindi",
+    analyzing: "Analiz yapılıyor...",
+    lastAnalysis: "Son analiz: ",
+    analyzeError: "Analiz sırasında hata oluştu."
   },
   en: {
     appTitle: "BIST Portfolio Advisor",
@@ -208,7 +214,10 @@ const I18N = {
     sugPrice: "Sug. Price",
     realLots: "Real Lots",
     realPrice: "Real Unit Price",
-    removed: " removed"
+    removed: " removed",
+    analyzing: "Analyzing...",
+    lastAnalysis: "Last analysis: ",
+    analyzeError: "Analysis failed."
   }
 };
 
@@ -284,11 +293,25 @@ async function loadPortfolio() {
   renderPortfolio(v);
 }
 async function analyze() {
-  const res = await post('/api/analyze', {});
-  window._lastAnalysis = res;
-  render(res);
-  renderConfirm(res);
-  await loadPortfolio();
+  const btn = document.getElementById('analyzeBtn');
+  const status = document.getElementById('analyzeStatus');
+  btn.disabled = true;
+  status.textContent = t('analyzing');
+  try {
+    const res = await post('/api/analyze', {});
+    window._lastAnalysis = res;
+    render(res);
+    renderConfirm(res);
+    await loadPortfolio();
+    const now = new Date();
+    const ts = now.toLocaleString(LANG === 'en' ? 'en-US' : 'tr-TR');
+    status.textContent = t('lastAnalysis') + ts;
+  } catch (e) {
+    status.textContent = t('analyzeError');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+  }
 }
 async function confirmTx() {
   const reqs = [];
