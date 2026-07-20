@@ -91,21 +91,39 @@ public class DailyAdvisor {
         List<Recommendation> buys = new ArrayList<>();
         long satCount = holdings.stream().filter(h -> "SAT".equals(h.action())).count();
         int slotsForBuy = portfolioService.buySlotsAfter((int) satCount);
-        if (slotsForBuy > 0) {
-            double budgetForBuy = cash * mode.riskPct;
+        if (slotsForBuy > 0 || !state.positions.isEmpty()) {
+            record Candidate(String symbol, double price, double score) {}
+            List<Candidate> candidates = new ArrayList<>();
             for (String sym : bistIndices.symbolsOf(state.selectedIndex)) {
-                if (currentPrices.containsKey(sym)) continue; // zaten portfoyde
-                if (buys.size() >= slotsForBuy) break;
+                if (currentPrices.containsKey(sym)) continue;
+                if (candidates.size() >= slotsForBuy) break;
                 List<String> series = loadSeries(sym);
                 double price = currentPrice(series, 0.0);
                 if (price <= 0) continue;
                 double[] pred = model.predict(featuresFor(sym, series));
                 double score = pred[1];
                 if (pred[0] == Labeler.BUY && score >= mode.buyThreshold) {
-                    int lots = (int) Math.floor(budgetForBuy / price);
+                    candidates.add(new Candidate(sym, price, score));
+                }
+            }
+            for (Position p : state.positions) {
+                List<String> series = loadSeries(p.symbol);
+                double price = currentPrice(series, p.avgCost);
+                double[] pred = model.predict(featuresFor(p.symbol, series));
+                double score = pred[1];
+                if (pred[0] == Labeler.BUY && score >= mode.buyThreshold) {
+                    candidates.add(new Candidate(p.symbol, price, score));
+                }
+            }
+            if (!candidates.isEmpty()) {
+                double totalBudget = cash * mode.riskPct;
+                double totalScore = candidates.stream().mapToDouble(c -> c.score).sum();
+                for (Candidate c : candidates) {
+                    double alloc = totalBudget * (c.score / totalScore);
+                    int lots = (int) Math.floor(alloc / c.price);
                     if (lots > 0) {
-                        buys.add(new Recommendation(idx++, sym, "AL", lots, price, score,
-                                "skor=" + String.format("%.2f", score)));
+                        buys.add(new Recommendation(idx++, c.symbol, "AL", lots, c.price, c.score,
+                                "skor=" + String.format("%.2f", c.score)));
                     }
                 }
             }

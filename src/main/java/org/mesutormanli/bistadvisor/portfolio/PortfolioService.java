@@ -112,9 +112,7 @@ public class PortfolioService {
             }
         } else if ("SAT".equalsIgnoreCase(action.trim())) {
             if (p != null) {
-                int sellLots = Math.min(lots, p.lots);
-                p.lots -= sellLots;
-                if (p.lots <= 0) state.positions.remove(p);
+                state.positions.remove(p);
             } else {
                 log.warn("applyTransaction: SAT istegi ama {} portfoyde bulunamadi", symbol);
             }

@@ -68,6 +68,8 @@ public class AdvisorController {
             double curTotal = p.lots * cur;
             totalInvested += costTotal;
             totalCurrent += curTotal;
+            double pnlPct = (cur - p.avgCost) / p.avgCost;
+            double pnlTl = curTotal - costTotal;
             Map<String, Object> r = new HashMap<>();
             r.put("symbol", p.symbol);
             r.put("lots", p.lots);
@@ -75,6 +77,8 @@ public class AdvisorController {
             r.put("costTotal", costTotal);
             r.put("currentPrice", cur);
             r.put("currentTotal", curTotal);
+            r.put("pnlPct", pnlPct);
+            r.put("pnlTl", pnlTl);
             rows.add(r);
         }
         Map<String, Object> out = new HashMap<>();

@@ -149,6 +149,8 @@ const I18N = {
     colCurrentPrice: "Güncel Birim",
     colCurrentTotal: "Güncel Toplam",
     colRemove: "",
+    colPnlPct: "Kar/Zarar %",
+    colPnlTl: "Kar/Zarar TL",
     total: "TOPLAM",
     noPositions: "Henüz pozisyon yok. Aşağıdan enstrüman ekleyin.",
     confirmEmpty: "Onaylanacak AL/SAT önerisi yok.",
@@ -207,6 +209,8 @@ const I18N = {
     colCurrentPrice: "Current Unit",
     colCurrentTotal: "Current Total",
     colRemove: "",
+    colPnlPct: "P&L %",
+    colPnlTl: "P&L TL",
     total: "TOTAL",
     noPositions: "No positions yet. Add an instrument below.",
     confirmEmpty: "No BUY/SELL recommendation to confirm.",
@@ -390,8 +394,9 @@ function renderPortfolio(v) {
   if (v.positions.length === 0) {
     h += '<p class="small">' + t('noPositions') + '</p>';
   } else {
-    h += '<table><tr><th>' + t('colSymbol') + '</th><th>' + t('colLots') + '</th><th>' + t('colUnitCost') + '</th><th>' + t('colTotalCost') + '</th><th>' + t('colCurrentPrice') + '</th><th>' + t('colCurrentTotal') + '</th><th></th></tr>';
+    h += '<table><tr><th>' + t('colSymbol') + '</th><th>' + t('colLots') + '</th><th>' + t('colUnitCost') + '</th><th>' + t('colTotalCost') + '</th><th>' + t('colCurrentPrice') + '</th><th>' + t('colCurrentTotal') + '</th><th>' + t('colPnlPct') + '</th><th>' + t('colPnlTl') + '</th><th></th></tr>';
     for (const p of v.positions) {
+      const pnlCls = p.pnlTl >= 0 ? 'al' : 'sat';
       h += `<tr>
         <td>${p.symbol}</td>
         <td>${p.lots}</td>
@@ -399,10 +404,12 @@ function renderPortfolio(v) {
         <td>${fmt(p.costTotal)}</td>
         <td>${fmt(p.currentPrice)}</td>
         <td>${fmt(p.currentTotal)}</td>
+        <td class="${pnlCls}">${(p.pnlPct >= 0 ? '+' : '') + (p.pnlPct * 100).toFixed(2)}%</td>
+        <td class="${pnlCls}">${fmt(p.pnlTl)}</td>
         <td><button style="background:#e84118;padding:4px 8px;font-size:12px" onclick="removePosition('${p.symbol}')">✕</button></td>
       </tr>`;
     }
-    h += `<tr style="font-weight:600;border-top:2px solid #345"><td colspan="3">${t('total')}</td><td>${fmt(v.totalInvested)}</td><td></td><td>${fmt(v.totalCurrent)}</td><td></td></tr>`;
+    h += `<tr style="font-weight:600;border-top:2px solid #345"><td colspan="3">${t('total')}</td><td>${fmt(v.totalInvested)}</td><td></td><td>${fmt(v.totalCurrent)}</td><td></td><td></td><td></td></tr>`;
     h += '</table>';
   }
   document.getElementById('portfolioView').innerHTML = h;

@@ -2,7 +2,9 @@
 
 [![Java CI](https://github.com/hyperpostulate/bist-advisor/actions/workflows/maven.yml/badge.svg)](https://github.com/hyperpostulate/bist-advisor/actions/workflows/maven.yml) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-BIST Portföy Danışmanı. CLI ve Web arayüzlü, SMILE ML modelleri (RandomForest / SVM / KNN) ve Yahoo Finance canlı verisi kullanan Spring Boot uygulaması.
+BIST'te işlem gören hisseler için yapay zeka destekli portföy yönetim asistanı. Portföyünüzü oluşturun, makine öğrenmesi modellerimiz sizin için al/sat/tut önerileri üretsin. Üç farklı risk seviyesi (temkinli, dengeli, agresif) arasından seçim yapın, öneriler buna göre şekillensin. Web arayüzü veya komut satırı ile kolayca kullanın.
+
+CLI ve Web arayüzlü, SMILE ML modelleri (RandomForest / SVM / KNN) ve Yahoo Finance canlı verisi kullanan Spring Boot uygulaması.
 
 ---
 
@@ -391,7 +393,9 @@ Bu proje GNU General Public License v3.0 altında lisanslanmıştır. Detaylı b
 
 ![Java CI](https://github.com/hyperpostulate/bist-advisor/actions/workflows/maven.yml/badge.svg) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-BIST Portfolio Advisor. Spring Boot application with CLI and Web interfaces, SMILE ML models (RandomForest / SVM / KNN), and Yahoo Finance live data.
+AI-powered portfolio management assistant for BIST-listed stocks. Build your portfolio and let our machine learning models generate buy/sell/hold recommendations tailored to your risk preference. Choose from three risk modes (conservative, balanced, aggressive) to match your investment style. Use via web interface or command line.
+
+Spring Boot application with CLI and Web interfaces, SMILE ML models (RandomForest / SVM / KNN), and Yahoo Finance live data.
 
 ---
 

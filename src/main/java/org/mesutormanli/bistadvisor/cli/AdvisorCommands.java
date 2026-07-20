@@ -81,8 +81,13 @@ public class AdvisorCommands {
     private void print(AnalysisResult r) {
         System.out.println("=== Günlük Öneri (" + r.positionCount() + "/5) | Nakit: " + Math.round(r.availableCash()) + " TL ===");
         System.out.println("-- Mevcut Portföy --");
+        java.util.Map<String, Position> posMap = new java.util.HashMap<>();
+        for (Position p : portfolioService.getState().positions) posMap.put(p.symbol, p);
         for (Recommendation x : r.holdings()) {
-            System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot | " + x.action() + " | " + x.note());
+            Position p = posMap.get(x.symbol());
+            double pnlTl = p != null ? (x.price() - p.avgCost) * x.lots() : 0;
+            System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot | " + x.action()
+                    + " | " + x.note() + " | " + String.format("%,.0f", pnlTl) + " TL");
         }
         System.out.println("-- Al Önerileri --");
         if (r.buys().isEmpty()) System.out.println("(Al önerisi yok)");
