@@ -94,14 +94,14 @@ public class AdvisorController {
 
     @PostMapping("/portfolio")
     public Map<String, String> savePortfolio(@RequestBody PortfolioState incoming) {
-        PortfolioState state = portfolioService.getState();
-        if (incoming.budget > 0) state.budget = incoming.budget;
-        if (incoming.advisorMode != null) state.advisorMode = incoming.advisorMode;
-        if (incoming.modelType != null) state.modelType = incoming.modelType;
-        if (incoming.selectedIndex != null && bistIndices.containsIndex(incoming.selectedIndex))
-            state.selectedIndex = incoming.selectedIndex.toUpperCase();
-        if (incoming.positions != null) state.positions = new ArrayList<>(incoming.positions);
-        portfolioService.save(state);
+        portfolioService.updateState(state -> {
+            if (incoming.budget > 0) state.budget = incoming.budget;
+            if (incoming.advisorMode != null) state.advisorMode = incoming.advisorMode;
+            if (incoming.modelType != null) state.modelType = incoming.modelType;
+            if (incoming.selectedIndex != null && bistIndices.containsIndex(incoming.selectedIndex))
+                state.selectedIndex = incoming.selectedIndex.toUpperCase();
+            if (incoming.positions != null) state.positions = new ArrayList<>(incoming.positions);
+        });
         Map<String, String> r = new HashMap<>();
         r.put("status", "ok");
         return r;
@@ -117,13 +117,16 @@ public class AdvisorController {
 
     @PostMapping("/confirm")
     public Map<String, String> confirm(@RequestBody List<ConfirmReq> reqs) {
-        for (ConfirmReq r : reqs) {
-            portfolioService.applyTransaction(r.symbol(), r.action(), r.lots(), r.price());
-        }
-        portfolioService.save(portfolioService.getState());
+        int[] applied = {0};
+        portfolioService.updateState(state -> {
+            for (ConfirmReq r : reqs) {
+                portfolioService.applyTransaction(r.symbol(), r.action(), r.lots(), r.price());
+                applied[0]++;
+            }
+        });
         Map<String, String> res = new HashMap<>();
         res.put("status", "ok");
-        res.put("applied", String.valueOf(reqs.size()));
+        res.put("applied", String.valueOf(applied[0]));
         return res;
     }
 

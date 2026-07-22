@@ -67,10 +67,10 @@ public final class TechnicalFeatures {
     }
 
     private static double ema(List<Bar> bars, int period) {
-        if (bars.isEmpty()) return 0;
+        if (bars.size() < period) return bars.isEmpty() ? 0 : bars.getLast().close();
         double k = 2.0 / (period + 1);
-        double ema = bars.get(0).close();
-        for (int i = 1; i < bars.size(); i++) {
+        double ema = sma(bars.subList(0, period), period);
+        for (int i = period; i < bars.size(); i++) {
             ema = bars.get(i).close() * k + ema * (1 - k);
         }
         return ema;

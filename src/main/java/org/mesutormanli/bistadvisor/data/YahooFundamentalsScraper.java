@@ -39,8 +39,8 @@ public class YahooFundamentalsScraper {
     private final int delayMs;
     private final HttpClient http;
     private final ObjectMapper mapper = new ObjectMapper();
-    private String crumb;
-    private java.net.http.HttpHeaders cookieHeaders;
+    private volatile String crumb;
+    private volatile java.net.http.HttpHeaders cookieHeaders;
 
     public YahooFundamentalsScraper(AppConfig appConfig) {
         this.timeoutMs = appConfig.scrapeTimeoutMs();
@@ -79,7 +79,7 @@ public class YahooFundamentalsScraper {
         return out;
     }
 
-    private void ensureCrumb() throws Exception {
+    private synchronized void ensureCrumb() throws Exception {
         if (crumb != null) return;
         // 1) cookie al
         HttpRequest cookieReq = HttpRequest.newBuilder()
@@ -88,6 +88,9 @@ public class YahooFundamentalsScraper {
                 .header("User-Agent", USER_AGENT)
                 .GET().build();
         HttpResponse<Void> cookieRes = http.send(cookieReq, HttpResponse.BodyHandlers.discarding());
+        if (cookieRes.statusCode() != 200) {
+            throw new IllegalStateException("Cookie alinamadi: HTTP " + cookieRes.statusCode());
+        }
         cookieHeaders = cookieRes.headers();
         // 2) crumb al
         HttpRequest crumbReq = HttpRequest.newBuilder()
@@ -133,13 +136,20 @@ public class YahooFundamentalsScraper {
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
             int code = res.statusCode();
             if (code == 200) return res;
-            if (code == 401) { // crumb gecersiz oldu, yenile
-                crumb = null;
-                ensureCrumb();
+            if (code == 401) {
+                synchronized (this) {
+                    crumb = null;
+                    ensureCrumb();
+                }
                 continue;
             }
             if (code == 429 || code >= 500) {
-                Thread.sleep(backoff);
+                try {
+                    Thread.sleep(backoff);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
                 backoff *= 2;
                 continue;
             }

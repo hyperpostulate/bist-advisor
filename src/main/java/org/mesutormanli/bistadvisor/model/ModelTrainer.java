@@ -62,9 +62,8 @@ public class ModelTrainer {
             x = ts.features;
             y = ts.labels;
         } catch (Exception e) {
-            log.warn("Egitim seti uretilemedi, demo veriye dusuluyor: {}", e.getMessage());
-            x = sampleFeatures(30);
-            y = sampleLabels(30);
+            log.error("Egitim seti uretilemedi: {}", e.getMessage());
+            throw new RuntimeException("Model egitimi icin egitim seti olusturulamadi: " + e.getMessage(), e);
         }
         ModelStrategy strategy = ModelStrategyFactory.create(type);
         strategy.train(x, y);
@@ -80,7 +79,7 @@ public class ModelTrainer {
     }
 
     /** CLI 'train' komutu icin canli veriyle egitim (secili endeks). */
-    public ModelStrategy train(ModelType type, String indexName) {
+    public synchronized ModelStrategy train(ModelType type, String indexName) {
         TrainingSet ts = buildTrainingSet(indexName);
         ModelStrategy s = train(type, ts.features, ts.labels);
         String key = cacheKey(type, indexName);
@@ -111,8 +110,7 @@ public class ModelTrainer {
             }
         }
         if (rows.isEmpty()) {
-            log.warn("Canli egitim verisi uretilemedi; demo veriye dusuluyor.");
-            return new TrainingSet(sampleFeatures(30), sampleLabels(30));
+            throw new IllegalStateException("Canli egitim verisi uretilemedi (endeks: " + indexName + ")");
         }
         double[][] x = rows.toArray(new double[0][]);
         int[] y = labels.stream().mapToInt(Integer::intValue).toArray();

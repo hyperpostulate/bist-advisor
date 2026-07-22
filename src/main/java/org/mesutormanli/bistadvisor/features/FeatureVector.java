@@ -52,13 +52,11 @@ public final class FeatureVector {
 
     /** Min-max normalize et (0..1). SVM/KNN icin onemli. */
     public void normalize() {
-        // RSI 0..100 zaten sinirli
         rsi = clamp(rsi / 100.0);
-        // oranlari -1..1 sinirla
         sma20Ratio = clamp((sma20Ratio + 1) / 2.0);
         sma50Ratio = clamp((sma50Ratio + 1) / 2.0);
-        macd = clamp(macd / 10.0 + 0.5); // kabaca
-        volatility = clamp(volatility * 20.0); // gunluk %5 vol -> 1.0
+        macd = clamp(macd / 30.0 + 0.5);
+        volatility = clamp(volatility * 50.0);
         volumeRatio = clamp(volumeRatio / 3.0);
         fk = clamp(fk / 50.0);
         pdDd = clamp(pdDd / 10.0);

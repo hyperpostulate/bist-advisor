@@ -129,7 +129,7 @@ public class DailyAdvisor {
             }
         }
 
-        state.lastRunDate = LocalDate.now().toString();
+        portfolioService.updateState(s -> s.lastRunDate = LocalDate.now().toString());
         return new AnalysisResult(holdings, buys, cash, state.positions.size(),
                 portfolioService.maxPositions(), slotsForBuy);
     }

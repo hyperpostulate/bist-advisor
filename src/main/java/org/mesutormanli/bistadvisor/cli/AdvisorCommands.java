@@ -47,17 +47,34 @@ public class AdvisorCommands {
     }
 
     public void confirm(List<String> args) {
-        // args: "THYAO,AL,100,240.5" "ASELS,SAT,50,351"
+        List<String> errors = new ArrayList<>();
+        int applied = 0;
         for (String a : args) {
             String[] p = a.split(",");
-            if (p.length >= 4) {
+            if (p.length < 4) {
+                errors.add("Gecersiz format (beklenen: SEMBOL,AL/SAT,lot,fiyat): " + a);
+                continue;
+            }
+            String action = p[1].trim().toUpperCase();
+            if (!"AL".equals(action) && !"SAT".equals(action)) {
+                errors.add("Gecersiz islem (" + action + "): " + a);
+                continue;
+            }
+            try {
                 portfolioService.applyTransaction(
-                        p[0].trim(), p[1].trim(),
+                        p[0].trim(), action,
                         Integer.parseInt(p[2].trim()), Double.parseDouble(p[3].trim()));
+                applied++;
+            } catch (NumberFormatException e) {
+                errors.add("Gecersiz sayi: " + a);
             }
         }
         portfolioService.save(portfolioService.getState());
-        System.out.println("İşlemler uygulandı: " + args.size());
+        System.out.println("İşlemler uygulandı: " + applied);
+        if (!errors.isEmpty()) {
+            System.out.println("Hatalar:");
+            errors.forEach(System.out::println);
+        }
     }
 
     public void status() {

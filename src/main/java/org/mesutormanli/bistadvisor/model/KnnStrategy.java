@@ -10,12 +10,12 @@ public class KnnStrategy implements ModelStrategy {
     private KNN<double[]> model;
 
     @Override
-    public void train(double[][] features, int[] labels) {
+    public synchronized void train(double[][] features, int[] labels) {
         this.model = KNN.fit(features, labels);
     }
 
     @Override
-    public double[] predict(double[] features) {
+    public synchronized double[] predict(double[] features) {
         double[] prob = new double[3];
         int cls = model.predict(features, prob);
         double score = (cls < prob.length) ? prob[cls] : 0.0;

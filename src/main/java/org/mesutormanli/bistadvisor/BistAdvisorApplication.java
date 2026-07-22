@@ -57,18 +57,32 @@ public class BistAdvisorApplication {
         double budget = 50000;
         String mode = null, model = null;
         List<Position> positions = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
         for (int i = 1; i < args.length; i++) {
             String a = args[i];
-            if (a.startsWith("--budget=")) budget = Double.parseDouble(a.substring(9));
-            else if (a.startsWith("--mode=")) mode = a.substring(7);
-            else if (a.startsWith("--model=")) model = a.substring(8);
-            else if (a.startsWith("--pos=")) {
-                // THYAO:100:240,AKBNK:50:110
-                for (String p : a.substring(6).split(",")) {
-                    String[] kv = p.split(":");
-                    if (kv.length == 3) positions.add(new Position(kv[0].toUpperCase(), Integer.parseInt(kv[1]), Double.parseDouble(kv[2])));
+            try {
+                if (a.startsWith("--budget=")) budget = Double.parseDouble(a.substring(9));
+                else if (a.startsWith("--mode=")) mode = a.substring(7);
+                else if (a.startsWith("--model=")) model = a.substring(8);
+                else if (a.startsWith("--pos=")) {
+                    for (String p : a.substring(6).split(",")) {
+                        String[] kv = p.split(":");
+                        if (kv.length == 3) {
+                            try {
+                                positions.add(new Position(kv[0].toUpperCase(), Integer.parseInt(kv[1]), Double.parseDouble(kv[2])));
+                            } catch (NumberFormatException e) {
+                                errors.add("Gecersiz pozisyon: " + p);
+                            }
+                        }
+                    }
                 }
+            } catch (NumberFormatException e) {
+                errors.add("Gecersiz arguman: " + a);
             }
+        }
+        if (!errors.isEmpty()) {
+            System.out.println("Hatalar:");
+            errors.forEach(System.out::println);
         }
         commands.init(budget, mode, model, positions);
     }

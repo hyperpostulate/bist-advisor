@@ -20,7 +20,7 @@ public class RandomForestStrategy implements ModelStrategy {
     private static final int NUM_CLASSES = 3;
 
     @Override
-    public void train(double[][] features, int[] labels) {
+    public synchronized void train(double[][] features, int[] labels) {
         String[] names = FeatureFrame.names();
         DataFrame df = DataFrame.of(features, names);
         int[][] cls2d = new int[labels.length][1];
@@ -45,7 +45,7 @@ public class RandomForestStrategy implements ModelStrategy {
     }
 
     @Override
-    public double[] predict(double[] features) {
+    public synchronized double[] predict(double[] features) {
         Tuple t = Tuple.of(schemaFrame.schema(), features);
         double bestScore = -1;
         int bestClass = 0;

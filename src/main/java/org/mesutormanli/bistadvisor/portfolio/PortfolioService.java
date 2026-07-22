@@ -33,7 +33,19 @@ public class PortfolioService {
     }
 
     public synchronized PortfolioState getState() {
-        return state;
+        PortfolioState copy = new PortfolioState();
+        copy.budget = state.budget;
+        copy.advisorMode = state.advisorMode;
+        copy.modelType = state.modelType;
+        copy.selectedIndex = state.selectedIndex;
+        copy.lastRunDate = state.lastRunDate;
+        if (state.positions != null) {
+            copy.positions = new java.util.ArrayList<>();
+            for (Position p : state.positions) {
+                copy.positions.add(new Position(p.symbol, p.lots, p.avgCost));
+            }
+        }
+        return copy;
     }
 
     public synchronized void save(PortfolioState newState) {
@@ -75,6 +87,12 @@ public class PortfolioService {
 
     public synchronized ModelType modelType() {
         return ModelType.fromKey(state.modelType);
+    }
+
+    /** Atomik read-modify-write: state'i alir, callback ile mutate eder, kaydeder. */
+    public synchronized void updateState(java.util.function.Consumer<PortfolioState> fn) {
+        fn.accept(state);
+        write();
     }
 
     /** Gerceklesen islemi state'e isler (web onay kutusundan gelir). */

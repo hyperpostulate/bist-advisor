@@ -3,27 +3,30 @@ package org.mesutormanli.bistadvisor.data;
 import org.mesutormanli.bistadvisor.config.AppConfig;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Cekilen fiyat serilerini cache/ dizininde gunluk CSV olarak tutar.
- * Ag erisimi yoksa ofline fallback saglar.
- */
 @Component
 public class CacheStore {
     private final String cacheDir;
+    private final Map<String, Object> locks = new ConcurrentHashMap<>();
 
     public CacheStore(AppConfig appConfig) {
         this.cacheDir = appConfig.cacheDir();
         new File(cacheDir).mkdirs();
+    }
+
+    private Object lockFor(String symbol) {
+        return locks.computeIfAbsent(symbol.toUpperCase(), k -> new Object());
     }
 
     public Path priceFile(String symbol) {
@@ -33,32 +36,35 @@ public class CacheStore {
     public boolean hasFresh(String symbol, LocalDate today) {
         File f = priceFile(symbol).toFile();
         if (!f.exists()) return false;
-        try {
-            List<String> lines = Files.readAllLines(f.toPath(), StandardCharsets.UTF_8);
-            if (lines.isEmpty()) return false;
-            String last = lines.get(lines.size() - 1);
-            return last.startsWith(today.toString());
-        } catch (IOException e) {
-            return false;
+        synchronized (lockFor(symbol)) {
+            try {
+                List<String> lines = Files.readAllLines(f.toPath(), StandardCharsets.UTF_8);
+                if (lines.isEmpty()) return false;
+                return lines.getLast().startsWith(today.toString());
+            } catch (IOException e) {
+                return false;
+            }
         }
     }
 
     public List<String> readPrice(String symbol) {
-        try {
-            return Files.readAllLines(priceFile(symbol), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            return new ArrayList<>();
+        synchronized (lockFor(symbol)) {
+            try {
+                return Files.readAllLines(priceFile(symbol), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                return new ArrayList<>();
+            }
         }
     }
 
     public void writePrice(String symbol, List<String> lines) {
-        try (BufferedWriter w = Files.newBufferedWriter(priceFile(symbol), StandardCharsets.UTF_8)) {
-            for (String l : lines) {
-                w.write(l);
-                w.write("\n");
+        synchronized (lockFor(symbol)) {
+            try {
+                Files.write(priceFile(symbol), lines, StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            } catch (IOException e) {
+                // cache yazimi kritik degil, sessizce gec
             }
-        } catch (IOException e) {
-            // cache yazimi kritik degil, sessizce gec
         }
     }
 }

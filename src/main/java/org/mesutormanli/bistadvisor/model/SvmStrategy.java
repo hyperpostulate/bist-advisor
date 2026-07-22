@@ -16,7 +16,7 @@ public class SvmStrategy implements ModelStrategy {
     private int numClasses = 3;
 
     @Override
-    public void train(double[][] features, int[] labels) {
+    public synchronized void train(double[][] features, int[] labels) {
         binaries.clear();
         for (int c = 0; c < numClasses; c++) {
             int[] binary = new int[labels.length];
@@ -27,7 +27,7 @@ public class SvmStrategy implements ModelStrategy {
     }
 
     @Override
-    public double[] predict(double[] features) {
+    public synchronized double[] predict(double[] features) {
         double bestScore = -1;
         int bestClass = 0;
         for (int c = 0; c < numClasses; c++) {
