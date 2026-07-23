@@ -14,10 +14,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * CLI komutlari: init / run / confirm / status / train.
- * Web argumani verilmeden calistirildiginda devreye girer.
- */
+/** CLI komut karsilayicisi: init, run, confirm, status, train. */
 @Component
 public class AdvisorCommands {
 
@@ -31,6 +28,7 @@ public class AdvisorCommands {
         this.modelTrainer = modelTrainer;
     }
 
+    /** Portfoyu baslatir: butce, mod, model ve baslangic pozisyonlari. */
     public void init(double budget, String mode, String model, List<Position> positions) {
         PortfolioState state = portfolioService.getState();
         state.budget = budget;
@@ -41,11 +39,13 @@ public class AdvisorCommands {
         System.out.println("Portföy kaydedildi: bütçe=" + budget + ", mod=" + state.advisorMode + ", model=" + state.modelType);
     }
 
+    /** Gunluk analizi calistirir ve sonuclari yazdirir. */
     public void run() {
         AnalysisResult r = dailyAdvisor.analyze();
         print(r);
     }
 
+    /** Komut satirindan AL/SAT islemlerini onaylar. Format: SEMBOL,AL/SAT,lot,fiyat */
     public void confirm(List<String> args) {
         List<String> errors = new ArrayList<>();
         int applied = 0;
@@ -77,6 +77,7 @@ public class AdvisorCommands {
         }
     }
 
+    /** Portfoy durumunu yazdirir: butce, mod, model, pozisyonlar. */
     public void status() {
         PortfolioState s = portfolioService.getState();
         System.out.println("Bütçe: " + s.budget + " TL");
@@ -87,6 +88,7 @@ public class AdvisorCommands {
         }
     }
 
+    /** ML modelini canli veriyle yeniden egitir. */
     public void train() {
         ModelType t = portfolioService.modelType();
         String idx = portfolioService.getState().selectedIndex;

@@ -16,9 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Web arayuzu ve CLI ortak REST API.
- */
+/** REST API kontrolcusu. Tum uclari /api altinda, web arayuzu ve CLI tarafindan kullanilir. */
 @RestController
 @RequestMapping("/api")
 public class AdvisorController {
@@ -33,6 +31,7 @@ public class AdvisorController {
         this.bistIndices = bistIndices;
     }
 
+    /** Desteklenen modlari, modelleri, endeksleri ve anlik secimi dondurur. */
     @GetMapping("/config")
     public Map<String, Object> config() {
         Map<String, Object> m = new HashMap<>();
@@ -50,12 +49,11 @@ public class AdvisorController {
         return m;
     }
 
+    /** Mevcut portfoy durumunu dondurur. */
     @GetMapping("/portfolio")
-    public PortfolioState portfolio() {
-        return portfolioService.getState();
-    }
+    public PortfolioState portfolio() { return portfolioService.getState(); }
 
-    /** Portfoy tablosu icin zenginlestirilmis gorunum (guncek fiyatlarla). */
+    /** Portfoy tablosu icin zenginlestirilmis gorunum (guncel fiyatlar, kar/zarar). */
     @GetMapping("/portfolio-view")
     public Map<String, Object> portfolioView() {
         PortfolioState s = portfolioService.getState();
@@ -92,6 +90,7 @@ public class AdvisorController {
         return out;
     }
 
+    /** Portfoyu gunceller (butce, mod, model, endeks, pozisyonlar). */
     @PostMapping("/portfolio")
     public Map<String, String> savePortfolio(@RequestBody PortfolioState incoming) {
         portfolioService.updateState(state -> {
@@ -107,14 +106,14 @@ public class AdvisorController {
         return r;
     }
 
+    /** Gunluk analizi calistirir ve AL/SAT/TUT onerilerini dondurur. */
     @PostMapping("/analyze")
-    public AnalysisResult analyze() {
-        return dailyAdvisor.analyze();
-    }
+    public AnalysisResult analyze() { return dailyAdvisor.analyze(); }
 
-    public record ConfirmReq(String symbol, String action, int lots, double price) {
-    }
+    /** Web uzerinden istek onay formatı. */
+    public record ConfirmReq(String symbol, String action, int lots, double price) {}
 
+    /** Bekleyen islemleri onaylar ve portfoye uygular. */
     @PostMapping("/confirm")
     public Map<String, String> confirm(@RequestBody List<ConfirmReq> reqs) {
         int[] applied = {0};

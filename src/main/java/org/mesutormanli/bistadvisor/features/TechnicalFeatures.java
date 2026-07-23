@@ -3,30 +3,25 @@ package org.mesutormanli.bistadvisor.features;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Fiyat serisinden teknik gostergeler. Seri: tarih,acilis,yuksek,dusuk,kapanis,hacim
- */
+/** Fiyat serisinden RSI, SMA, MACD, volatilite, hacim orani gibi teknik gostergeleri hesaplar. */
 public final class TechnicalFeatures {
 
-    private TechnicalFeatures() {
-    }
+    private TechnicalFeatures() {}
 
-    /** Tek satir: tarih,kapanis,hacim (son N gun). */
-    public record Bar(String date, double close, double volume) {
-    }
+    /** Tek bir gunluk fiyat kaydi: tarih, kapanis, hacim. */
+    public record Bar(String date, double close, double volume) {}
 
+    /** CSV satirlarini (date,close,vol veya eski format date,open,high,low,close,vol) Bar listesine cevirir. */
     public static List<Bar> toBars(List<String> csvLines) {
-        // format: tarih,acilis,yuksek,dusuk,kapanis,hacim
         List<Bar> bars = new ArrayList<>();
         for (String line : csvLines) {
             String[] p = line.split(",");
-            if (p.length < 5) continue;
+            if (p.length < 3) continue;
             try {
-                double close = Double.parseDouble(p[4]);
-                double vol = p.length >= 6 ? Double.parseDouble(p[5]) : 0.0;
+                double close = p.length >= 5 ? Double.parseDouble(p[4]) : Double.parseDouble(p[1]);
+                double vol = p.length >= 6 ? Double.parseDouble(p[5]) : Double.parseDouble(p[2]);
                 bars.add(new Bar(p[0], close, vol));
-            } catch (NumberFormatException ignored) {
-            }
+            } catch (NumberFormatException ignored) {}
         }
         return bars;
     }

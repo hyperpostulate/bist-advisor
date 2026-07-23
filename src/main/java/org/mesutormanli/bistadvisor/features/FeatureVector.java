@@ -1,21 +1,30 @@
 package org.mesutormanli.bistadvisor.features;
 
-import java.util.Map;
+import org.mesutormanli.bistadvisor.data.YahooClient.Fundamentals;
 
-/**
- * Bir hisse icin teknik + temel ozellik vektoru. ML modeline beslenir.
- */
+/** 11 boyutlu ozellik vektoru (6 teknik + 5 temel). ML modeline beslenir. */
 public final class FeatureVector {
+    /** RSI (14 gunluk). */
     public double rsi;
+    /** Son fiyat / SMA-20 - 1 (fiyat momentumu). */
     public double sma20Ratio;
+    /** Son fiyat / SMA-50 - 1 (uzun vadeli momentum). */
     public double sma50Ratio;
+    /** MACD (EMA12 - EMA26). */
     public double macd;
+    /** 20 gunluk getiri standart sapmasi (volatilite). */
     public double volatility;
+    /** Son gun hacmi / 20 gunluk ortalama hacim. */
     public double volumeRatio;
+    /** F/K (trailing, yoksa forward). */
     public double fk;
+    /** PD/DD. */
     public double pdDd;
+    /** Temettu verimi. */
     public double dividendYield;
+    /** Kar buyumesi (yoksa gelir buyumesine duser). */
     public double profitGrowth;
+    /** Ozkaynak karliligi (ROE). */
     public double roe;
 
     public static String[] featureNames() {
@@ -30,7 +39,7 @@ public final class FeatureVector {
                 volumeRatio, fk, pdDd, dividendYield, profitGrowth, roe};
     }
 
-    public static FeatureVector fromBars(Map<String, Double> fundamentals,
+    public static FeatureVector fromBars(Fundamentals fundamentals,
                                          java.util.List<TechnicalFeatures.Bar> bars) {
         FeatureVector fv = new FeatureVector();
         if (bars == null || bars.isEmpty()) return fv;
@@ -41,11 +50,11 @@ public final class FeatureVector {
         fv.volatility = TechnicalFeatures.volatility(bars, 20);
         fv.volumeRatio = TechnicalFeatures.volumeRatio(bars, 20);
         if (fundamentals != null) {
-            fv.fk = fundamentals.getOrDefault("fk", 0.0);
-            fv.pdDd = fundamentals.getOrDefault("pdDd", 0.0);
-            fv.dividendYield = fundamentals.getOrDefault("dividendYield", 0.0);
-            fv.profitGrowth = fundamentals.getOrDefault("profitGrowth", 0.0);
-            fv.roe = fundamentals.getOrDefault("roe", 0.0);
+            fv.fk = fundamentals.fk();
+            fv.pdDd = fundamentals.pdDd();
+            fv.dividendYield = fundamentals.dividendYield();
+            fv.profitGrowth = fundamentals.profitGrowth();
+            fv.roe = fundamentals.roe();
         }
         return fv;
     }

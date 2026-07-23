@@ -4,9 +4,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/**
- * Tek sayfa HTML arayuzunu servis eder: / -> static/index.html
- */
+/** Statik dosyalari (index.html) classpath:/static/ altinden servis eder. */
 @Configuration
 public class StaticPageConfig implements WebMvcConfigurer {
     @Override

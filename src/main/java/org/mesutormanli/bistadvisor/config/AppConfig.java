@@ -3,10 +3,7 @@ package org.mesutormanli.bistadvisor.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/**
- * Uygulama geneli konfigurasyon: varsayilan ML modeli, BIST-30 listesi,
- * egitim parametreleri ve dosya yollari.
- */
+/** application.properties'den okunan uygulama geneli konfigurasyon degerleri. */
 @Component
 public class AppConfig {
 
@@ -23,32 +20,28 @@ public class AppConfig {
     private int labelHorizonDays;
 
     @Value("${bist.scrape.timeout-ms:15000}")
-    private int scrapeTimeoutMs = 15000;
+    private int scrapeTimeoutMs;
 
     @Value("${bist.scrape.delay-ms:250}")
-    private int scrapeDelayMs = 250;
+    private int scrapeDelayMs;
 
+    /** Varsayilan ML model tipi (application.properties -> bist.ml.model). */
     public ModelType defaultModelType() {
         return ModelType.fromKey(defaultModelKey);
     }
 
-    public String cacheDir() {
-        return cacheDir;
-    }
+    /** Fiyat serisi onbellek dizini (varsayilan: cache/). */
+    public String cacheDir() { return cacheDir; }
 
-    public String stateFile() {
-        return stateFile;
-    }
+    /** Portfoy durumu dosyasi (varsayilan: state.yaml). */
+    public String stateFile() { return stateFile; }
 
-    public int labelHorizonDays() {
-        return labelHorizonDays;
-    }
+    /** Etiketleme icin N gunluk getiri hesaplama ufku (varsayilan: 20). */
+    public int labelHorizonDays() { return labelHorizonDays; }
 
-    public int scrapeTimeoutMs() {
-        return scrapeTimeoutMs;
-    }
+    /** Yahoo API istek zamani asimi (ms). */
+    public int scrapeTimeoutMs() { return scrapeTimeoutMs; }
 
-    public int scrapeDelayMs() {
-        return scrapeDelayMs;
-    }
+    /** Yahoo API istekler arasi gecikme (ms). */
+    public int scrapeDelayMs() { return scrapeDelayMs; }
 }

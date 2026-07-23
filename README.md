@@ -106,8 +106,7 @@ org.mesutormanli.bistadvisor
 ├── data/
 │   ├── BistIndices.java                   # BIST endeks-hisse eşleştirme (.properties)
 │   ├── CacheStore.java                    # Fiyat serisi önbelleği (CSV dosya)
-│   ├── PriceScraper.java                  # Yahoo Finance OHLCV çekici
-│   └── YahooFundamentalsScraper.java      # Yahoo Finance temel veri çekici
+│   └── YahooClient.java                   # Yahoo Finance OHLCV + temel veri çekici
 ├── features/
 │   ├── FeatureVector.java                 # 11 boyutlu özellik vektörü
 │   └── TechnicalFeatures.java             # Teknik göstergeler (RSI/SMA/MACD/volatilite)
@@ -137,8 +136,7 @@ org.mesutormanli.bistadvisor
 | `DailyAdvisor` | Portföy ve ML modelini birleştirerek günlük AL/SAT/TUT önerileri üretir |
 | `AdvisorCommands` | CLI komut arayüzü: `init`, `run`, `confirm`, `status`, `train` |
 | `AdvisorMode` | 3 yatırım modu: TEMKİNLİ (%25 risk), DENGELİ (%50), AGRESİF (%75) |
-| `PriceScraper` | Yahoo Finance'den 1 yıllık günlük OHLCV serisi çeker |
-| `YahooFundamentalsScraper` | Yahoo Finance'den F/K, PD/DD, temettü, ROE, büyüme çeker |
+| `YahooClient` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker |
 | `BistIndices` | BIST-30/50/100 ve sektör endekslerini sembol listeleriyle tanımlar |
 | `CacheStore` | Fiyat serilerini `cache/` dizininde CSV olarak önbelleğe alır |
 | `FeatureVector` | 11 özellik: RSI, SMA-20/50 oranı, MACD, volatilite, hacim, F/K, PD/DD, temettü, büyüme, ROE |
@@ -147,7 +145,7 @@ org.mesutormanli.bistadvisor
 | `SvmStrategy` | One-vs-rest SVM (Gaussian kernel) |
 | `KnnStrategy` | k-NN sınıflandırıcı (k=5) |
 | `Labeler` | N günlük getiriye göre etiketleme: >%5 → AL, <-%5 → SAT, arada → TUT |
-| `ModelTrainer` | Canlı veriyle eğitim, EnumMap ile bellek-içi önbellek |
+| `ModelTrainer` | Canlı veriyle eğitim, HashMap ile bellek-içi önbellek |
 | `PortfolioService` | state.yaml okuma/yazma, portföy kısıtları (maks 5 pozisyon) |
 | `AdvisorController` | REST API: portfolio CRUD, analiz, onay, konfigürasyon |
 | `BistAdvisorApplication` | Web modu (args yok) veya CLI modu (args var) |
@@ -216,13 +214,9 @@ N=20 günlük getiri bazlı etiketleme:
 - Getiri < -%5 → SAT (1)
 - Arada → TUT (2)
 
-### PriceScraper
+### YahooClient
 
-Yahoo Finance `query2.finance.yahoo.com/v8/finance/chart/` adresinden çeker. Rate-limit (429) için katlanarak backoff ile 4 kez yeniden dener. Satır formatı: `tarih,acilis,yuksek,dusuk,kapanis,hacim`.
-
-### YahooFundamentalsScraper
-
-Yahoo Finance `quoteSummary` API'sinden crumb + cookie oturum yönetimi ile çeker. Alanlar: F/K (trailing/forward), PD/DD, temettü verimi, ROE, kâr/gelir büyümesi.
+Yahoo Finance'den hem OHLCV fiyat serisi (`v8/finance/chart/`) hem de temel verileri (`quoteSummary` + crumb/cookie) çeker. Rate-limit (429) için katlanarak backoff ile 3 kez yeniden dener. Fiyat çıktısı: `tarih,kapanis,hacim`.
 
 ---
 
@@ -497,8 +491,7 @@ org.mesutormanli.bistadvisor
 ├── data/
 │   ├── BistIndices.java                   # BIST index-to-symbol mapping from .properties
 │   ├── CacheStore.java                    # Price series cache (CSV files)
-│   ├── PriceScraper.java                  # Yahoo Finance OHLCV fetcher
-│   └── YahooFundamentalsScraper.java      # Yahoo Finance fundamentals fetcher
+│   └── YahooClient.java                   # Yahoo Finance OHLCV + fundamentals fetcher
 ├── features/
 │   ├── FeatureVector.java                 # 11-dimensional feature vector
 │   └── TechnicalFeatures.java             # Technical indicators (RSI/SMA/MACD/volatility)
@@ -528,8 +521,7 @@ org.mesutormanli.bistadvisor
 | `DailyAdvisor` | Generates daily BUY/SELL/HOLD recommendations by combining portfolio and ML model |
 | `AdvisorCommands` | CLI command interface: `init`, `run`, `confirm`, `status`, `train` |
 | `AdvisorMode` | 3 investment modes: CONSERVATIVE (25% risk), BALANCED (50%), AGGRESSIVE (75%) |
-| `PriceScraper` | Fetches 1-year daily OHLCV series from Yahoo Finance |
-| `YahooFundamentalsScraper` | Fetches P/E, P/B, dividend yield, ROE, earnings growth from Yahoo Finance |
+| `YahooClient` | Fetches OHLCV prices + fundamentals (P/E, P/B, dividend, ROE, growth) from Yahoo Finance |
 | `BistIndices` | Defines BIST-30/50/100 and sector indices with symbol lists |
 | `CacheStore` | Caches fetched price series as CSV files in `cache/` directory |
 | `FeatureVector` | 11 features: RSI, SMA-20/50 ratio, MACD, volatility, volume, P/E, P/B, dividend, growth, ROE |
@@ -538,7 +530,7 @@ org.mesutormanli.bistadvisor
 | `SvmStrategy` | One-vs-rest SVM with Gaussian kernel |
 | `KnnStrategy` | k-NN classifier (k=5) |
 | `Labeler` | N-day return labeling: >5% → BUY, <-5% → SELL, else → HOLD |
-| `ModelTrainer` | Live data training with EnumMap in-memory cache |
+| `ModelTrainer` | Live data training with HashMap in-memory cache |
 | `PortfolioService` | state.yaml read/write, portfolio constraints (max 5 positions) |
 | `AdvisorController` | REST API: portfolio CRUD, analysis, confirmation, configuration |
 | `BistAdvisorApplication` | Web mode (no args) or CLI mode (with args) |
@@ -607,13 +599,9 @@ Return-based labeling with N=20 day horizon:
 - Return < -5% → SELL (1)
 - Otherwise → HOLD (2)
 
-### PriceScraper
+### YahooClient
 
-Fetches from Yahoo Finance `query2.finance.yahoo.com/v8/finance/chart/`. Exponential backoff with 4 retries for rate-limiting (429). Each row format: `date,open,high,low,close,volume`.
-
-### YahooFundamentalsScraper
-
-Fetches from Yahoo Finance `quoteSummary` API with crumb + cookie session management. Fields: P/E (trailing/forward), P/B, dividend yield, ROE, earnings/revenue growth.
+Fetches both OHLCV prices (`v8/finance/chart/`) and fundamentals (`quoteSummary` with crumb/cookie) from Yahoo Finance. Exponential backoff with 3 retries for rate-limiting (429). Price output: `date,close,volume`.
 
 ---
 

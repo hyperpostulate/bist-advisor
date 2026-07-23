@@ -3,9 +3,7 @@ package org.mesutormanli.bistadvisor.model;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import smile.classification.KNN;
 
-/**
- * KNN tabanli strateji (SMILE 6.2.3). Varsayilan komsu sayisi 5.
- */
+/** KNN siniflandirici stratejisi (k=5, SMILE 6.2.3). */
 public class KnnStrategy implements ModelStrategy {
     private KNN<double[]> model;
 
@@ -14,6 +12,7 @@ public class KnnStrategy implements ModelStrategy {
         this.model = KNN.fit(features, labels);
     }
 
+    /** Komsuluk oylamasina gore sinif ve olasilik skoru dondurur. */
     @Override
     public synchronized double[] predict(double[] features) {
         double[] prob = new double[3];

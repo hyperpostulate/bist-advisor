@@ -10,9 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * RandomForest tabanli strateji (SMILE 6.2.3). SMILE RF cok sinifli veride
- * sensitivity metrigi binary gerektirdigi icin one-vs-rest sarici kullanilir:
- * her sinif (AL/SAT/TUT) icin ayri binary RF egitilir.
+ * One-vs-rest RandomForest stratejisi. SMILE RandomForest cok sinifli tahmin
+ * icin probability matrix dondurmediginden, her sinif (AL/SAT/TUT) icin ayri
+ * bir binary siniflandirici egitilir ve en yuksek skoru veren sinif secilir.
  */
 public class RandomForestStrategy implements ModelStrategy {
     private final List<RandomForest> forests = new ArrayList<>();
@@ -44,6 +44,7 @@ public class RandomForestStrategy implements ModelStrategy {
         }
     }
 
+    /** Her binary forest'tan skor alir, en yuksek skorlu sinifi dondurur. */
     @Override
     public synchronized double[] predict(double[] features) {
         Tuple t = Tuple.of(schemaFrame.schema(), features);
@@ -62,7 +63,5 @@ public class RandomForestStrategy implements ModelStrategy {
     }
 
     @Override
-    public ModelType type() {
-        return ModelType.RANDOM_FOREST;
-    }
+    public ModelType type() { return ModelType.RANDOM_FOREST; }
 }

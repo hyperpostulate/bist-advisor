@@ -13,9 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
-/**
- * state.yaml okuma/yazma ve portfoy kisitlari (maks 5 hisse, bakiye).
- */
+/** state.yaml okuma/yazma, portfoy kisitlari (maks 5 pozisyon, butce kontrolu) ve islem uygulama. */
 @Service
 public class PortfolioService {
     private static final Logger log = LoggerFactory.getLogger(PortfolioService.class);
@@ -32,6 +30,7 @@ public class PortfolioService {
         this.state = load();
     }
 
+    /** Portfoy durumunun savunmacı bir kopyasini dondurur. */
     public synchronized PortfolioState getState() {
         PortfolioState copy = new PortfolioState();
         copy.budget = state.budget;
@@ -48,54 +47,52 @@ public class PortfolioService {
         return copy;
     }
 
+    /** Verilen state'i kaydeder (hafiza + dosya). */
     public synchronized void save(PortfolioState newState) {
         this.state = newState;
         write();
     }
 
-    /** Kullanilabilir nakit = butce - mevcut pozisyon degerleri (guncel fiyat map ile). */
+    /** Kullanilabilir nakit = butce - pozisyonlarin guncel piyasa degeri. */
     public synchronized double availableCash(java.util.Map<String, Double> currentPrices) {
         if (state.positions == null) return state.budget;
         double invested = state.positions.stream()
-                .mapToDouble(p -> p.lots * currentPrices.getOrDefault(p.symbol, p.avgCost))
-                .sum();
+                .mapToDouble(p -> p.lots * currentPrices.getOrDefault(p.symbol, p.avgCost)).sum();
         return Math.max(0.0, state.budget - invested);
     }
 
+    /** Yeni pozisyon eklenebilir mi? (max 5 kontrolu). */
     public synchronized boolean canAddPosition() {
         return state.positions != null && state.positions.size() < MAX_POSITIONS;
     }
 
-    public synchronized int maxPositions() {
-        return MAX_POSITIONS;
-    }
+    /** Maksimum pozisyon sayisi (5). */
+    public synchronized int maxPositions() { return MAX_POSITIONS; }
 
-    /** SAT sonrasi acilan slot da dahil, alim icin kullanilabilir maksimum yeni pozisyon. */
+    /** SAT sonrasi kalan slotlar dahil, alim icin kullanilabilir maksimum yeni pozisyon sayisi. */
     public synchronized int buySlotsAfter(int sellCount) {
         int posCount = state.positions != null ? state.positions.size() : 0;
-        int remaining = MAX_POSITIONS - (posCount - sellCount);
-        return Math.max(0, Math.min(remaining, MAX_POSITIONS));
+        return Math.max(0, Math.min(MAX_POSITIONS - (posCount - sellCount), MAX_POSITIONS));
     }
 
+    /** Mevcut pozisyon sayisi. */
     public synchronized int currentPositionCount() {
         return state.positions != null ? state.positions.size() : 0;
     }
 
-    public synchronized AdvisorMode advisorMode() {
-        return AdvisorMode.fromLabel(state.advisorMode);
-    }
+    /** state'teki advisorMode alanini AdvisorMode enum'ina cevirir. */
+    public synchronized AdvisorMode advisorMode() { return AdvisorMode.fromLabel(state.advisorMode); }
 
-    public synchronized ModelType modelType() {
-        return ModelType.fromKey(state.modelType);
-    }
+    /** state'teki modelType alanini ModelType enum'ina cevirir. */
+    public synchronized ModelType modelType() { return ModelType.fromKey(state.modelType); }
 
-    /** Atomik read-modify-write: state'i alir, callback ile mutate eder, kaydeder. */
+    /** Atomik read-modify-write: callback ile state mutate edilir, sonra kaydedilir. */
     public synchronized void updateState(java.util.function.Consumer<PortfolioState> fn) {
         fn.accept(state);
         write();
     }
 
-    /** Gerceklesen islemi state'e isler (web onay kutusundan gelir). */
+    /** Gerceklesen AL/SAT islemini portfoye yansitir. */
     public synchronized void applyTransaction(String symbol, String action, int lots, double price) {
         if (symbol == null || symbol.isBlank()) {
             log.warn("applyTransaction: sembol bos, islem atlandi");
@@ -139,11 +136,10 @@ public class PortfolioService {
         }
     }
 
+    /** state.yaml dosyasindan portfoy durumunu okur, yoksa/yazilamazsa bos state ile baslar. */
     private PortfolioState load() {
         File f = new File(appConfig.stateFile());
-        if (!f.exists()) {
-            return new PortfolioState();
-        }
+        if (!f.exists()) return new PortfolioState();
         try {
             return yamlMapper.readValue(f, PortfolioState.class);
         } catch (IOException e) {
@@ -152,6 +148,7 @@ public class PortfolioService {
         }
     }
 
+    /** state.yaml dosyasina portfoy durumunu yazar. */
     private void write() {
         try {
             yamlMapper.writeValue(new File(appConfig.stateFile()), state);

@@ -12,31 +12,30 @@ import org.springframework.context.annotation.Bean;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * BIST-30 Portföy Danışmanı.
- * Argüman verilmezse web sunucusu (http://localhost:8080) başlar.
- * Argüman verilirse CLI komutu çalışır.
- */
 @SpringBootApplication
 public class BistAdvisorApplication {
 
+    /**
+     * Uygulama giris noktasi. Args yoksa web modu (port 8080), args varsa CLI modu.
+     * CLI modunda Spring Shell ve web sunucusu devre disi birakilir, komut
+     * dogrudan CommandLineRunner uzerinden calistirilir.
+     */
     public static void main(String[] args) {
         if (args.length == 0) {
             SpringApplication.run(BistAdvisorApplication.class, args);
         } else {
-            // CLI modu: web ve interaktif shell'i devre disi birak, sadece komutu calistir
             SpringApplication app = new SpringApplication(BistAdvisorApplication.class);
             app.setWebApplicationType(org.springframework.boot.WebApplicationType.NONE);
-            app.setDefaultProperties(java.util.Map.of(
-                    "spring.shell.enabled", "false"));
+            app.setDefaultProperties(java.util.Map.of("spring.shell.enabled", "false"));
             app.run(args);
         }
     }
 
+    /** CLI komutlarini args[0]'a gore yonlendirir. */
     @Bean
     CommandLineRunner cliRunner(AdvisorCommands commands) {
         return args -> {
-            if (args.length == 0) return; // web modu
+            if (args.length == 0) return;
             String cmd = args[0];
             switch (cmd) {
                 case "init" -> runInit(commands, args);
@@ -53,6 +52,7 @@ public class BistAdvisorApplication {
         };
     }
 
+    /** --budget, --mode, --model, --pos parametrelerini cozumler ve commands.init'e gecirir. */
     private void runInit(AdvisorCommands commands, String[] args) {
         double budget = 50000;
         String mode = null, model = null;

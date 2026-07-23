@@ -14,11 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * BIST endekslerine gore hisse listesi. bist-indices.properties icinde her satir
- * "ENDKS_ADI=SEMOL1,SEMOL2,..." seklindedir. Kullanici istedigi endeksi secerek
- * o endeksin hisseleri uzerinden analiz yaptirabilir.
- */
+/** bist-indices.properties dosyasindan endeks -> sembol listesi eslesmesini yukler. */
 @Component
 public class BistIndices {
 
@@ -27,6 +23,7 @@ public class BistIndices {
 
     private final Map<String, List<String>> indices = new LinkedHashMap<>();
 
+    /** properties dosyasini satir satir okuyarak indices haritasini olusturur. */
     @PostConstruct
     void load() throws IOException {
         try (BufferedReader reader = new BufferedReader(
@@ -48,15 +45,16 @@ public class BistIndices {
         }
     }
 
-    public List<String> indexNames() {
-        return List.copyOf(indices.keySet());
-    }
+    /** Tum endeks adlarini dondurur. */
+    public List<String> indexNames() { return List.copyOf(indices.keySet()); }
 
+    /** Verilen endeksteki sembol listesini dondurur, yoksa bos liste. */
     public List<String> symbolsOf(String indexName) {
         List<String> s = indices.get(indexName == null ? null : indexName.toUpperCase());
         return s != null ? List.copyOf(s) : List.of();
     }
 
+    /** Verilen endeks adi tanimli mi? */
     public boolean containsIndex(String indexName) {
         return indices.containsKey(indexName == null ? "" : indexName.toUpperCase());
     }
