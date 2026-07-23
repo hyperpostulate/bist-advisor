@@ -32,6 +32,7 @@ public class YahooClient {
     private final HttpClient http;
     private final ObjectMapper mapper = new ObjectMapper();
     private volatile String crumb;
+    private volatile String sessionCookie;
 
     public YahooClient() {
         this.http = HttpClient.newBuilder()
@@ -85,10 +86,10 @@ public class YahooClient {
         HttpResponse<Void> cr = http.send(HttpRequest.newBuilder()
                 .uri(URI.create(COOKIE_URL)).timeout(Duration.ofSeconds(15))
                 .header("User-Agent", UA).GET().build(), HttpResponse.BodyHandlers.discarding());
-        String cookie = cookieString(cr.headers());
+        sessionCookie = cookieString(cr.headers());
         HttpResponse<String> rr = http.send(HttpRequest.newBuilder()
                 .uri(URI.create(CRUMB_URL)).timeout(Duration.ofSeconds(15))
-                .header("User-Agent", UA).header("Cookie", cookie).GET().build(),
+                .header("User-Agent", UA).header("Cookie", sessionCookie).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         if (rr.statusCode() != 200 || rr.body().isBlank())
             throw new IllegalStateException("crumb alinamadi: HTTP " + rr.statusCode());
@@ -102,7 +103,7 @@ public class YahooClient {
             if (e.getKey().equalsIgnoreCase("set-cookie")) {
                 for (String c : e.getValue()) {
                     if (c != null && !c.isBlank()) {
-                        if (sb.length() > 0) sb.append("; ");
+                        if (!sb.isEmpty()) sb.append("; ");
                         sb.append(c.split(";")[0]);
                     }
                 }
@@ -118,13 +119,13 @@ public class YahooClient {
             var builder = HttpRequest.newBuilder()
                     .uri(URI.create(url)).timeout(Duration.ofSeconds(15))
                     .header("User-Agent", UA).header("Accept", "application/json");
-            if (withCrumb) builder.header("Cookie", cookieString(null));
+            if (withCrumb && sessionCookie != null) builder.header("Cookie", sessionCookie);
             HttpRequest req = builder.GET().build();
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
             int code = res.statusCode();
             if (code == 200) return res;
             if (code == 401 && withCrumb) {
-                synchronized (this) { crumb = null; ensureCrumb(); }
+                synchronized (this) { crumb = null; sessionCookie = null; ensureCrumb(); }
                 continue;
             }
             if (code == 429 || code >= 500) {

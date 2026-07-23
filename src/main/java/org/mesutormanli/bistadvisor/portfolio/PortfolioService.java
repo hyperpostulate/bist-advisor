@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
 
 /** state.yaml okuma/yazma, portfoy kisitlari (maks 5 pozisyon, butce kontrolu) ve islem uygulama. */
 @Service
@@ -38,8 +37,8 @@ public class PortfolioService {
         copy.modelType = state.modelType;
         copy.selectedIndex = state.selectedIndex;
         copy.lastRunDate = state.lastRunDate;
+        copy.positions = new java.util.ArrayList<>();
         if (state.positions != null) {
-            copy.positions = new java.util.ArrayList<>();
             for (Position p : state.positions) {
                 copy.positions.add(new Position(p.symbol, p.lots, p.avgCost));
             }
@@ -72,12 +71,7 @@ public class PortfolioService {
     /** SAT sonrasi kalan slotlar dahil, alim icin kullanilabilir maksimum yeni pozisyon sayisi. */
     public synchronized int buySlotsAfter(int sellCount) {
         int posCount = state.positions != null ? state.positions.size() : 0;
-        return Math.max(0, Math.min(MAX_POSITIONS - (posCount - sellCount), MAX_POSITIONS));
-    }
-
-    /** Mevcut pozisyon sayisi. */
-    public synchronized int currentPositionCount() {
-        return state.positions != null ? state.positions.size() : 0;
+        return Math.clamp(MAX_POSITIONS - (posCount - sellCount), 0, MAX_POSITIONS);
     }
 
     /** state'teki advisorMode alanini AdvisorMode enum'ina cevirir. */

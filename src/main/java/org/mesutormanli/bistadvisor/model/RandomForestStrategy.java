@@ -7,6 +7,7 @@ import smile.data.Tuple;
 import smile.data.formula.Formula;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -28,11 +29,10 @@ public class RandomForestStrategy implements ModelStrategy {
         DataFrame clsDf = DataFrame.of(cls2d, "sinif");
         df = df.merge(clsDf);
         this.schemaFrame = df;
-        Formula formula = Formula.lhs("sinif");
+        Formula.lhs("sinif");
 
         forests.clear();
         for (int c = 0; c < NUM_CLASSES; c++) {
-            double[][] binFeatures = features;
             int[] binary = new int[labels.length];
             for (int i = 0; i < labels.length; i++) binary[i] = (labels[i] == c) ? 1 : 0;
             // binary egitim icin ayri DataFrame kur
@@ -47,13 +47,14 @@ public class RandomForestStrategy implements ModelStrategy {
     /** Her binary forest'tan skor alir, en yuksek skorlu sinifi dondurur. */
     @Override
     public synchronized double[] predict(double[] features) {
-        Tuple t = Tuple.of(schemaFrame.schema(), features);
+        Object[] boxed = Arrays.stream(features).boxed().toArray();
+        Tuple t = Tuple.of(schemaFrame.schema(), boxed);
         double bestScore = -1;
         int bestClass = 0;
         for (int c = 0; c < NUM_CLASSES; c++) {
             double[] prob = new double[2];
             forests.get(c).predict(t, prob);
-            double score = prob.length >= 2 ? prob[1] : 0.5;
+            double score = prob[1];
             if (score > bestScore) {
                 bestScore = score;
                 bestClass = c;
