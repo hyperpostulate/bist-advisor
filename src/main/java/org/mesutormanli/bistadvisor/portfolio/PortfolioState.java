@@ -21,8 +21,4 @@ public class PortfolioState {
     /** Son analiz tarihi (yyyy-MM-dd). */
     public String lastRunDate;
 
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public boolean isInitialized() {
-        return positions != null && !positions.isEmpty() && budget > 0;
-    }
 }

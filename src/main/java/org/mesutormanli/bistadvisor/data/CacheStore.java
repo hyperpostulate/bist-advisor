@@ -1,6 +1,8 @@
 package org.mesutormanli.bistadvisor.data;
 
 import org.mesutormanli.bistadvisor.config.AppConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -14,6 +16,7 @@ import java.util.List;
 /** Fiyat serilerini cache/ dizininde CSV olarak saklar. Her sembol ayri bir dosyada tutulur. */
 @Component
 public class CacheStore {
+    private static final Logger log = LoggerFactory.getLogger(CacheStore.class);
     private final Path cacheDir;
 
     public CacheStore(AppConfig appConfig) {
@@ -48,7 +51,7 @@ public class CacheStore {
             Files.write(priceFile(symbol), lines, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         } catch (IOException e) {
-            // cache yazimi kritik degil, sessizce gec
+            log.warn("cache yazma hatasi {}: {}", symbol, e.getMessage());
         }
     }
 

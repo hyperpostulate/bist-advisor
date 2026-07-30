@@ -80,7 +80,8 @@ public class ModelTrainer {
             if (bars.size() <= horizon + 5) continue;
             Fundamentals f = yahoo.fetchFundamentals(sym);
             int end = bars.size() - horizon;
-            for (int i = Math.max(0, end - 20); i < end; i++) {
+            int windowSize = Math.min(bars.size(), 100);
+            for (int i = Math.max(0, end - windowSize); i < end; i++) {
                 List<Bar> window = bars.subList(0, i + 1);
                 FeatureVector fv = FeatureVector.fromBars(f, window);
                 fv.normalize();

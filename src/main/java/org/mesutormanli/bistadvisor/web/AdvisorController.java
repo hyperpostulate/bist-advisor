@@ -93,6 +93,7 @@ public class AdvisorController {
     /** Portfoyu gunceller (butce, mod, model, endeks, pozisyonlar). */
     @PostMapping("/portfolio")
     public Map<String, String> savePortfolio(@RequestBody PortfolioState incoming) {
+        Map<String, String> r = new HashMap<>();
         portfolioService.updateState(state -> {
             if (incoming.budget > 0) state.budget = incoming.budget;
             if (incoming.advisorMode != null) state.advisorMode = incoming.advisorMode;
@@ -101,8 +102,13 @@ public class AdvisorController {
                 state.selectedIndex = incoming.selectedIndex.toUpperCase();
             if (incoming.positions != null) state.positions = new ArrayList<>(incoming.positions);
         });
-        Map<String, String> r = new HashMap<>();
-        r.put("status", "ok");
+        String validationError = portfolioService.validatePortfolio();
+        if (validationError != null) {
+            r.put("status", "warning");
+            r.put("message", validationError);
+        } else {
+            r.put("status", "ok");
+        }
         return r;
     }
 
@@ -116,16 +122,20 @@ public class AdvisorController {
     /** Bekleyen islemleri onaylar ve portfoye uygular. */
     @PostMapping("/confirm")
     public Map<String, String> confirm(@RequestBody List<ConfirmReq> reqs) {
-        int[] applied = {0};
-        portfolioService.updateState(state -> {
-            for (ConfirmReq r : reqs) {
-                portfolioService.applyTransaction(r.symbol(), r.action(), r.lots(), r.price());
-                applied[0]++;
+        int applied = 0;
+        int failed = 0;
+        for (ConfirmReq r : reqs) {
+            if (portfolioService.applyTransaction(r.symbol(), r.action(), r.lots(), r.price())) {
+                applied++;
+            } else {
+                failed++;
             }
-        });
+        }
+        portfolioService.save(portfolioService.getState());
         Map<String, String> res = new HashMap<>();
         res.put("status", "ok");
-        res.put("applied", String.valueOf(applied[0]));
+        res.put("applied", String.valueOf(applied));
+        res.put("failed", String.valueOf(failed));
         return res;
     }
 

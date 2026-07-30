@@ -67,12 +67,14 @@ public class BistAdvisorApplication {
                 else if (a.startsWith("--pos=")) {
                     for (String p : a.substring(6).split(",")) {
                         String[] kv = p.split(":");
-                        if (kv.length == 3) {
+                        if (kv.length >= 3) {
                             try {
                                 positions.add(new Position(kv[0].toUpperCase(), Integer.parseInt(kv[1]), Double.parseDouble(kv[2])));
                             } catch (NumberFormatException e) {
                                 errors.add("Gecersiz pozisyon: " + p);
                             }
+                        } else {
+                            errors.add("Eksik alan (beklenen: SEMBOL:lot:fiyat): " + p);
                         }
                     }
                 }

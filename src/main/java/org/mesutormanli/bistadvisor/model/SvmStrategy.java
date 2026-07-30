@@ -30,6 +30,9 @@ public class SvmStrategy implements ModelStrategy {
     /** Her binary SVM'in decision value'sunu sigmoid ile 0..1'e cevirir, en yuksek skorlu sinifi secer. */
     @Override
     public synchronized double[] predict(double[] features) {
+        if (binaries.isEmpty()) {
+            return new double[]{0, 0.0};
+        }
         double bestScore = -1;
         int bestClass = 0;
         for (int c = 0; c < numClasses; c++) {

@@ -46,7 +46,9 @@ public final class FeatureVector {
         fv.rsi = TechnicalFeatures.rsi(bars, 14);
         fv.sma20Ratio = TechnicalFeatures.smaRatio(bars, 20);
         fv.sma50Ratio = TechnicalFeatures.smaRatio(bars, 50);
-        fv.macd = TechnicalFeatures.macd(bars);
+        double macdRaw = TechnicalFeatures.macd(bars);
+        double curClose = bars.getLast().close();
+        fv.macd = curClose != 0 ? macdRaw / curClose : 0;
         fv.volatility = TechnicalFeatures.volatility(bars, 20);
         fv.volumeRatio = TechnicalFeatures.volumeRatio(bars, 20);
         if (fundamentals != null) {
@@ -64,7 +66,7 @@ public final class FeatureVector {
         rsi = clamp(rsi / 100.0);
         sma20Ratio = clamp((sma20Ratio + 1) / 2.0);
         sma50Ratio = clamp((sma50Ratio + 1) / 2.0);
-        macd = clamp(macd / 30.0 + 0.5);
+        macd = clamp(macd * 10.0 + 0.5);
         volatility = clamp(volatility * 50.0);
         volumeRatio = clamp(volumeRatio / 3.0);
         fk = clamp(fk / 50.0);

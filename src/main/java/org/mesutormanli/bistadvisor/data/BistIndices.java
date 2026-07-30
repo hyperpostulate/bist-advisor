@@ -50,12 +50,14 @@ public class BistIndices {
 
     /** Verilen endeksteki sembol listesini dondurur, yoksa bos liste. */
     public List<String> symbolsOf(String indexName) {
-        List<String> s = indices.get(indexName == null ? null : indexName.toUpperCase());
+        if (indexName == null) return List.of();
+        List<String> s = indices.get(indexName.toUpperCase());
         return s != null ? List.copyOf(s) : List.of();
     }
 
     /** Verilen endeks adi tanimli mi? */
     public boolean containsIndex(String indexName) {
-        return indices.containsKey(indexName == null ? "" : indexName.toUpperCase());
+        if (indexName == null) return false;
+        return indices.containsKey(indexName.toUpperCase());
     }
 }

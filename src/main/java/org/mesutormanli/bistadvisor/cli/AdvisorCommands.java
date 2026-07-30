@@ -35,6 +35,10 @@ public class AdvisorCommands {
         if (mode != null) state.advisorMode = AdvisorMode.fromLabel(mode).name();
         if (model != null) state.modelType = ModelType.fromKey(model).name();
         if (positions != null) state.positions = new ArrayList<>(positions);
+        String validationError = portfolioService.validatePortfolio();
+        if (validationError != null) {
+            System.out.println("Uyari: " + validationError);
+        }
         portfolioService.save(state);
         System.out.println("Portföy kaydedildi: bütçe=" + budget + ", mod=" + state.advisorMode + ", model=" + state.modelType);
     }
@@ -61,10 +65,13 @@ public class AdvisorCommands {
                 continue;
             }
             try {
-                portfolioService.applyTransaction(
+                if (portfolioService.applyTransaction(
                         p[0].trim(), action,
-                        Integer.parseInt(p[2].trim()), Double.parseDouble(p[3].trim()));
-                applied++;
+                        Integer.parseInt(p[2].trim()), Double.parseDouble(p[3].trim()))) {
+                    applied++;
+                } else {
+                    errors.add("Islem basarisiz: " + a);
+                }
             } catch (NumberFormatException e) {
                 errors.add("Gecersiz sayi: " + a);
             }

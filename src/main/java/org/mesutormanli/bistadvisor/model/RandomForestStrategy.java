@@ -29,7 +29,6 @@ public class RandomForestStrategy implements ModelStrategy {
         DataFrame clsDf = DataFrame.of(cls2d, "sinif");
         df = df.merge(clsDf);
         this.schemaFrame = df;
-        Formula.lhs("sinif");
 
         forests.clear();
         for (int c = 0; c < NUM_CLASSES; c++) {
@@ -47,6 +46,9 @@ public class RandomForestStrategy implements ModelStrategy {
     /** Her binary forest'tan skor alir, en yuksek skorlu sinifi dondurur. */
     @Override
     public synchronized double[] predict(double[] features) {
+        if (schemaFrame == null || forests.isEmpty()) {
+            return new double[]{0, 0.0};
+        }
         Object[] boxed = Arrays.stream(features).boxed().toArray();
         Tuple t = Tuple.of(schemaFrame.schema(), boxed);
         double bestScore = -1;

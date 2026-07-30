@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,12 +64,13 @@ public class DailyAdvisor {
         ModelType modelType = portfolioService.modelType();
         ModelStrategy model = modelTrainer.getOrTrain(modelType, state.selectedIndex);
 
+        Map<String, List<Bar>> barsCache = new HashMap<>();
         Map<String, Double> currentPrices = new LinkedHashMap<>();
         List<Recommendation> holdings = new ArrayList<>();
         int idx = 1;
 
         for (Position p : state.positions) {
-            List<Bar> bars = loadSeries(p.symbol);
+            List<Bar> bars = loadSeriesCached(p.symbol, barsCache);
             double price = currentPrice(bars, p.avgCost);
             currentPrices.put(p.symbol, price);
             double pnlPct = (price - p.avgCost) / p.avgCost;
@@ -75,7 +78,7 @@ public class DailyAdvisor {
             String note = (pnlPct >= 0 ? "+" : "") + String.format("%.2f", pnlPct * 100) + "%";
             double[] pred = model.predict(featuresFor(p.symbol, bars));
             double score = pred[1];
-            if (pnlPct <= -mode.stopLossPct || (score < mode.sellScoreThreshold && pred[0] == Labeler.SELL)) {
+            if (pnlPct <= -mode.stopLossPct || (pred[0] == Labeler.SELL && score >= mode.sellScoreThreshold)) {
                 action = "SAT";
                 note += " | skor=" + String.format("%.2f", score);
             }
@@ -89,10 +92,10 @@ public class DailyAdvisor {
         if (slotsForBuy > 0 || !state.positions.isEmpty()) {
             record Candidate(String symbol, double price, double score) {}
             List<Candidate> candidates = new ArrayList<>();
+
             for (String sym : bistIndices.symbolsOf(state.selectedIndex)) {
                 if (currentPrices.containsKey(sym)) continue;
-                if (candidates.size() >= slotsForBuy) break;
-                List<Bar> bars = loadSeries(sym);
+                List<Bar> bars = loadSeriesCached(sym, barsCache);
                 double price = currentPrice(bars, 0.0);
                 if (price <= 0) continue;
                 double[] pred = model.predict(featuresFor(sym, bars));
@@ -102,7 +105,7 @@ public class DailyAdvisor {
                 }
             }
             for (Position p : state.positions) {
-                List<Bar> bars = loadSeries(p.symbol);
+                List<Bar> bars = loadSeriesCached(p.symbol, barsCache);
                 double price = currentPrice(bars, p.avgCost);
                 double[] pred = model.predict(featuresFor(p.symbol, bars));
                 double score = pred[1];
@@ -110,15 +113,21 @@ public class DailyAdvisor {
                     candidates.add(new Candidate(p.symbol, price, score));
                 }
             }
-            if (!candidates.isEmpty()) {
+
+            candidates.sort(Comparator.comparingDouble(Candidate::score).reversed());
+            List<Candidate> top = candidates.size() <= slotsForBuy ? candidates : candidates.subList(0, slotsForBuy);
+
+            if (!top.isEmpty()) {
                 double totalBudget = cash * mode.riskPct;
-                double totalScore = candidates.stream().mapToDouble(c -> c.score).sum();
-                for (Candidate c : candidates) {
-                    double alloc = totalBudget * (c.score / totalScore);
-                    int lots = (int) Math.floor(alloc / c.price);
-                    if (lots > 0) {
-                        buys.add(new Recommendation(idx++, c.symbol, "AL", lots, c.price, c.score,
-                                "skor=" + String.format("%.2f", c.score)));
+                double totalScore = top.stream().mapToDouble(c -> c.score).sum();
+                if (totalScore > 0) {
+                    for (Candidate c : top) {
+                        double alloc = totalBudget * (c.score / totalScore);
+                        int lots = (int) Math.floor(alloc / c.price);
+                        if (lots > 0) {
+                            buys.add(new Recommendation(idx++, c.symbol, "AL", lots, c.price, c.score,
+                                    "skor=" + String.format("%.2f", c.score)));
+                        }
                     }
                 }
             }
@@ -127,6 +136,10 @@ public class DailyAdvisor {
         portfolioService.updateState(s -> s.lastRunDate = LocalDate.now().toString());
         return new AnalysisResult(holdings, buys, cash, state.positions.size(),
                 portfolioService.maxPositions(), slotsForBuy);
+    }
+
+    private List<Bar> loadSeriesCached(String symbol, Map<String, List<Bar>> cache) {
+        return cache.computeIfAbsent(symbol, this::loadSeries);
     }
 
     private List<Bar> loadSeries(String symbol) {
