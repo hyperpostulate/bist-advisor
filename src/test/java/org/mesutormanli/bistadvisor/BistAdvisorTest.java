@@ -11,7 +11,12 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Agsiz dogrulama: teknik gostergeler, etiketleyici, Yahoo JSON cozumleme. */
+/**
+ * Projenin temel birim testlerini içeren test sınıfı.
+ * <p>
+ * Teknik gösterge hesaplamaları, etiketleme mantığı ve Yahoo Finance JSON
+ * ayrıştırma işlemlerini test eder.
+ */
 class BistAdvisorTest {
 
     @Test
@@ -30,6 +35,10 @@ class BistAdvisorTest {
         assertTrue(vol >= 0);
     }
 
+    /**
+     * {@link Labeler#labelFor} metodunun %100'ün üzerindeki getiride
+     * {@code BUY} etiketi döndürdüğünü doğrular.
+     */
     @Test
     void labelerAssignsClasses() {
         List<Bar> bars = new ArrayList<>();
@@ -39,6 +48,11 @@ class BistAdvisorTest {
         assertEquals(Labeler.BUY, lbl);
     }
 
+    /**
+     * Yahoo Finance'den alınan örnek JSON yanıtının doğru şekilde
+     * {@link org.mesutormanli.bistadvisor.features.TechnicalFeatures.Bar Bar}
+     * nesnelerine ayrıştırıldığını doğrular.
+     */
     @Test
     void priceScraperParsesYahooFixture() {
         String json = """

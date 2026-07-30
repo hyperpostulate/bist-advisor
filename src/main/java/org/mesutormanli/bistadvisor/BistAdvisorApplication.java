@@ -16,9 +16,12 @@ import java.util.List;
 public class BistAdvisorApplication {
 
     /**
-     * Uygulama giris noktasi. Args yoksa web modu (port 8080), args varsa CLI modu.
-     * CLI modunda Spring Shell ve web sunucusu devre disi birakilir, komut
-     * dogrudan CommandLineRunner uzerinden calistirilir.
+     * Uygulamanın giriş noktası. Hiç argüman verilmezse Web modunda (Spring Boot web)
+     * çalışır; argüman varsa CLI modunda çalışarak Spring Shell'i devre dışı bırakır
+     * ve komut satırından {code init}, {code run}, {code confirm}, {code status},
+     * {code train} komutlarını işletir.
+     *
+     * @param args komut satırı argümanları
      */
     public static void main(String[] args) {
         if (args.length == 0) {
@@ -31,7 +34,13 @@ public class BistAdvisorApplication {
         }
     }
 
-    /** CLI komutlarini args[0]'a gore yonlendirir. */
+    /**
+     * CLI modunda çalıştırıldığında ilk argümanı komut olarak alır ve
+     * {code AdvisorCommands} üzerinden ilgili metoda yönlendirir.
+     *
+     * @param commands CLI komutlarını işleyen servis
+     * @return CommandLineRunner Spring bean'i
+     */
     @Bean
     CommandLineRunner cliRunner(AdvisorCommands commands) {
         return args -> {
@@ -52,7 +61,15 @@ public class BistAdvisorApplication {
         };
     }
 
-    /** --budget, --mode, --model, --pos parametrelerini cozumler ve commands.init'e gecirir. */
+    /**
+     * {code init} komutunu işler: bütçe, mod, model ve portföy pozisyonlarını
+     * komut satırı argümanlarından ayrıştırır ve {code AdvisorCommands.init()}'e
+     * yönlendirir.
+     *
+     * @param commands CLI komutlarını işleyen servis
+     * @param args     komut satırı argümanları ({code --budget=...}, {code --mode=...},
+     *                 {code --model=...}, {code --pos=SEMBOL:lot:fiyat,...})
+     */
     private void runInit(AdvisorCommands commands, String[] args) {
         double budget = 50000;
         String mode = null, model = null;
@@ -69,7 +86,7 @@ public class BistAdvisorApplication {
                         String[] kv = p.split(":");
                         if (kv.length >= 3) {
                             try {
-                                positions.add(new Position(kv[0].toUpperCase(), Integer.parseInt(kv[1]), Double.parseDouble(kv[2])));
+                                positions.add(new Position(kv[0], Integer.parseInt(kv[1]), Double.parseDouble(kv[2])));
                             } catch (NumberFormatException e) {
                                 errors.add("Gecersiz pozisyon: " + p);
                             }

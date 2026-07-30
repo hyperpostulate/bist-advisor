@@ -27,7 +27,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Portfoy ve ML modelini birlestirerek gunluk AL/SAT/TUT onerileri uretir. */
 @Service
 public class DailyAdvisor {
     private static final Logger log = LoggerFactory.getLogger(DailyAdvisor.class);
@@ -38,6 +37,9 @@ public class DailyAdvisor {
     private final ModelTrainer modelTrainer;
     private final PortfolioService portfolioService;
 
+    /**
+     * {@code DailyAdvisor} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     */
     public DailyAdvisor(BistIndices bistIndices, YahooClient yahoo,
                         CacheStore cacheStore,
                         ModelTrainer modelTrainer, PortfolioService portfolioService) {
@@ -48,16 +50,44 @@ public class DailyAdvisor {
         this.portfolioService = portfolioService;
     }
 
-    /** Tek bir oneri kaydi. */
+    /**
+     * Tek bir hisse senedi önerisini temsil eder.
+     *
+     * @param index  sıra numarası
+     * @param symbol hisse sembolü
+     * @param action işlem türü (AL/SAT/TUT)
+     * @param lots   lot miktarı
+     * @param price  güncel fiyat
+     * @param score  model güven skoru
+     * @param note   açıklama notu
+     */
     public record Recommendation(int index, String symbol, String action,
                                  int lots, double price, double score, String note) {}
 
-    /** Analiz sonucu: mevcut portfoy durumu + alim onerileri. */
+    /**
+     * Günlük analiz sonucunu kapsüller.
+     *
+     * @param holdings       mevcut portföy pozisyonları için öneriler
+     * @param buys           alım önerileri
+     * @param availableCash  kullanılabilir nakit
+     * @param positionCount  mevcut pozisyon sayısı
+     * @param maxPositions   maksimum pozisyon limiti
+     * @param buySlots       doldurulabilecek pozisyon sayısı
+     */
     public record AnalysisResult(List<Recommendation> holdings, List<Recommendation> buys,
                                  double availableCash, int positionCount,
                                  int maxPositions, int buySlots) {}
 
-    /** Ana analiz dongusu: portfoydeki her pozisyonu ve aday hisseleri ML modeli ile degerlendirir. */
+    /**
+     * Günlük portföy analizini çalıştırır:
+     * <ul>
+     *   <li>Mevcut pozisyonlar için SAT/TUT kararlarını üretir</li>
+     *   <li>Uygun hisseler için AL önerilerini sıralar ve bütçe dağıtımı yapar</li>
+     *   <li>Son çalışma tarihini günceller</li>
+     * </ul>
+     *
+     * @return analiz sonucu ({@code AnalysisResult})
+     */
     public AnalysisResult analyze() {
         PortfolioState state = portfolioService.getState();
         AdvisorMode mode = portfolioService.advisorMode();
@@ -70,19 +100,19 @@ public class DailyAdvisor {
         int idx = 1;
 
         for (Position p : state.positions) {
-            List<Bar> bars = loadSeriesCached(p.symbol, barsCache);
-            double price = currentPrice(bars, p.avgCost);
-            currentPrices.put(p.symbol, price);
-            double pnlPct = (price - p.avgCost) / p.avgCost;
+            List<Bar> bars = loadSeriesCached(p.symbol(), barsCache);
+            double price = currentPrice(bars, p.avgCost());
+            currentPrices.put(p.symbol(), price);
+            double pnlPct = (price - p.avgCost()) / p.avgCost();
             String action = "TUT";
             String note = (pnlPct >= 0 ? "+" : "") + String.format("%.2f", pnlPct * 100) + "%";
-            double[] pred = model.predict(featuresFor(p.symbol, bars));
+            double[] pred = model.predict(featuresFor(p.symbol(), bars));
             double score = pred[1];
             if (pnlPct <= -mode.stopLossPct || (pred[0] == Labeler.SELL && score >= mode.sellScoreThreshold)) {
                 action = "SAT";
                 note += " | skor=" + String.format("%.2f", score);
             }
-            holdings.add(new Recommendation(idx++, p.symbol, action, p.lots, price, 0.0, note));
+            holdings.add(new Recommendation(idx++, p.symbol(), action, p.lots(), price, 0.0, note));
         }
 
         double cash = portfolioService.availableCash(currentPrices);
@@ -105,12 +135,12 @@ public class DailyAdvisor {
                 }
             }
             for (Position p : state.positions) {
-                List<Bar> bars = loadSeriesCached(p.symbol, barsCache);
-                double price = currentPrice(bars, p.avgCost);
-                double[] pred = model.predict(featuresFor(p.symbol, bars));
+                List<Bar> bars = loadSeriesCached(p.symbol(), barsCache);
+                double price = currentPrice(bars, p.avgCost());
+                double[] pred = model.predict(featuresFor(p.symbol(), bars));
                 double score = pred[1];
                 if (pred[0] == Labeler.BUY && score >= mode.buyThreshold) {
-                    candidates.add(new Candidate(p.symbol, price, score));
+                    candidates.add(new Candidate(p.symbol(), price, score));
                 }
             }
 
@@ -138,10 +168,21 @@ public class DailyAdvisor {
                 portfolioService.maxPositions(), slotsForBuy);
     }
 
+    /**
+     * Belirtilen hisse için fiyat serisini önbellekten (harita üzerinden) döndürür.
+     * Seri daha önce yüklenmemişse {@link #loadSeries(String)} çağrılır.
+     */
     private List<Bar> loadSeriesCached(String symbol, Map<String, List<Bar>> cache) {
         return cache.computeIfAbsent(symbol, this::loadSeries);
     }
 
+    /**
+     * Belirtilen hisse için fiyat serisini yükler. Önce önbelleği kontrol eder;
+     * taze değilse Yahoo Finance'den çeker ve önbelleğe yazar.
+     *
+     * @param symbol hisse sembolü
+     * @return fiyat çubukları listesi
+     */
     private List<Bar> loadSeries(String symbol) {
         LocalDate today = LocalDate.now();
         if (!cacheStore.hasFresh(symbol, today)) {
@@ -154,10 +195,21 @@ public class DailyAdvisor {
         return TechnicalFeatures.toBars(cacheStore.readLines(symbol));
     }
 
+    /**
+     * Fiyat serisinin son kapanış değerini döndürür. Seri boşsa {@code fallback} kullanılır.
+     */
     private double currentPrice(List<Bar> series, double fallback) {
         return series.isEmpty() ? fallback : series.getLast().close();
     }
 
+    /**
+     * Bir hisse senedi için normalleştirilmiş öznitelik vektörünü hesaplar.
+     * Teknik göstergeleri ve temel verileri (F/K, PD/DD vb.) birleştirir.
+     *
+     * @param symbol hisse sembolü
+     * @param bars   fiyat çubukları serisi
+     * @return 11 boyutlu normalleştirilmiş öznitelik dizisi
+     */
     private double[] featuresFor(String symbol, List<Bar> bars) {
         Fundamentals f = yahoo.fetchFundamentals(symbol);
         FeatureVector fv = FeatureVector.fromBars(f, bars);
@@ -165,11 +217,15 @@ public class DailyAdvisor {
         return fv.toArray();
     }
 
-    /** Portfoydeki tum sembollerin guncel kapanis fiyatlarini dondurur. */
+    /**
+     * Portföydeki tüm pozisyonlar için güncel fiyatları harita olarak döndürür.
+     *
+     * @return sembol -> güncel fiyat eşlemesi
+     */
     public Map<String, Double> currentPrices() {
         Map<String, Double> prices = new LinkedHashMap<>();
         for (Position p : portfolioService.getState().positions) {
-            prices.put(p.symbol, currentPrice(loadSeries(p.symbol), p.avgCost));
+            prices.put(p.symbol(), currentPrice(loadSeries(p.symbol()), p.avgCost()));
         }
         return prices;
     }

@@ -14,7 +14,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** bist-indices.properties dosyasindan endeks -> sembol listesi eslesmesini yukler. */
+/**
+ * BIST endeks tanımlarını {@code bist-indices.properties} dosyasından yükler
+ * ve endeks adına göre sembol listelerine erişim sağlar.
+ * <p>
+ * Her satır {@code ENDEKS_ADI=SEMBOL1,SEMBOL2,...} formatındadır.
+ */
 @Component
 public class BistIndices {
 
@@ -23,7 +28,12 @@ public class BistIndices {
 
     private final Map<String, List<String>> indices = new LinkedHashMap<>();
 
-    /** properties dosyasini satir satir okuyarak indices haritasini olusturur. */
+    /**
+     * {@code bist-indices.properties} dosyasını okur ve endeksleri belleğe yükler.
+     * Boş satırlar ve {@code #} ile başlayan yorumlar atlanır.
+     *
+     * @throws IOException dosya okunamazsa fırlatılır
+     */
     @PostConstruct
     void load() throws IOException {
         try (BufferedReader reader = new BufferedReader(
@@ -45,17 +55,29 @@ public class BistIndices {
         }
     }
 
-    /** Tum endeks adlarini dondurur. */
+    /**
+     * Tüm endeks adlarının bir kopyasını döndürür.
+     */
     public List<String> indexNames() { return List.copyOf(indices.keySet()); }
 
-    /** Verilen endeksteki sembol listesini dondurur, yoksa bos liste. */
+    /**
+     * Belirtilen endekse ait hisse senedi sembollerini döndürür.
+     *
+     * @param indexName endeks adı (case-insensitive)
+     * @return sembol listesi, endeks bulunamazsa boş liste
+     */
     public List<String> symbolsOf(String indexName) {
         if (indexName == null) return List.of();
         List<String> s = indices.get(indexName.toUpperCase());
         return s != null ? List.copyOf(s) : List.of();
     }
 
-    /** Verilen endeks adi tanimli mi? */
+    /**
+     * Belirtilen endeks adının tanımlı olup olmadığını kontrol eder.
+     *
+     * @param indexName endeks adı
+     * @return {@code true} eğer endeks tanımlıysa
+     */
     public boolean containsIndex(String indexName) {
         if (indexName == null) return false;
         return indices.containsKey(indexName.toUpperCase());

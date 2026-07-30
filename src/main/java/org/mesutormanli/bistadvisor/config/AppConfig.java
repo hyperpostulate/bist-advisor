@@ -3,7 +3,13 @@ package org.mesutormanli.bistadvisor.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** application.properties'den okunan uygulama geneli konfigurasyon degerleri. */
+/**
+ * Uygulama genelindeki yapılandırma parametrelerini {@code application.properties}
+ * dosyasından okuyarak sağlayan Spring bean'i.
+ * <p>
+ * Varsayılan ML modeli, önbellek dizini, state dosya yolu, etiketleme ufku ve
+ * HTTP istek zaman aşımı/gecikme değerlerini içerir.
+ */
 @Component
 public class AppConfig {
 
@@ -25,23 +31,37 @@ public class AppConfig {
     @Value("${bist.scrape.delay-ms:250}")
     private int scrapeDelayMs;
 
-    /** Varsayilan ML model tipi (application.properties -> bist.ml.model). */
+    /**
+     * Varsayılan ML model türünü döndürür.
+     *
+     * @return {@code application.properties} üzerinden belirlenen model türü
+     */
     public ModelType defaultModelType() {
         return ModelType.fromKey(defaultModelKey);
     }
 
-    /** Fiyat serisi onbellek dizini (varsayilan: cache/). */
+    /**
+     * Önbellek dosyalarının saklandığı dizin yolunu döndürür.
+     */
     public String cacheDir() { return cacheDir; }
 
-    /** Portfoy durumu dosyasi (varsayilan: state.yaml). */
+    /**
+     * Portföy durumunun kaydedildiği YAML dosyasının yolunu döndürür.
+     */
     public String stateFile() { return stateFile; }
 
-    /** Etiketleme icin N gunluk getiri hesaplama ufku (varsayilan: 20). */
+    /**
+     * Etiketleme (labeling) için kullanılan getiri hesaplama ufkunu (gün) döndürür.
+     */
     public int labelHorizonDays() { return labelHorizonDays; }
 
-    /** Yahoo API istek zamani asimi (ms). */
+    /**
+     * Yahoo Finance API isteklerinde kullanılan zaman aşımı süresini (ms) döndürür.
+     */
     public int scrapeTimeoutMs() { return scrapeTimeoutMs; }
 
-    /** Yahoo API istekler arasi gecikme (ms). */
+    /**
+     * Yahoo Finance API ardışık istekleri arasındaki gecikmeyi (ms) döndürür.
+     */
     public int scrapeDelayMs() { return scrapeDelayMs; }
 }

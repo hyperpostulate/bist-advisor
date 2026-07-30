@@ -6,19 +6,31 @@ import org.mesutormanli.bistadvisor.config.ModelType;
 import java.util.ArrayList;
 import java.util.List;
 
-/** state.yaml ile kalicilastirilan uygulama durumu: butce, mod, model, pozisyonlar. */
+/**
+ * Portföyün kalıcı durumunu temsil eden POJO.
+ * <p>
+ * Alanlar doğrudan Jackson/YAML serileştirmesi için {@code public} olarak
+ * tanımlanmıştır. Varsayılan değerler: bütçe=0, mod=BALANCED,
+ * model=RANDOM_FOREST, endeks=BIST_30.
+ */
 public class PortfolioState {
-    /** Yatirima ayrilan toplam TL butce. */
+
+    /** Toplam bütçe (TL) */
     public double budget = 0.0;
-    /** Aktif risk modu (CONSERVATIVE / BALANCED / AGGRESSIVE). */
+
+    /** Yatırım modu (enum adı olarak saklanır) */
     public String advisorMode = AdvisorMode.BALANCED.name();
-    /** Aktif ML modeli (RANDOM_FOREST / SVM / KNN). */
+
+    /** ML model türü (enum adı olarak saklanır) */
     public String modelType = ModelType.RANDOM_FOREST.name();
-    /** Analiz yapilacak BIST endeksi (bist-indices.properties icindeki anahtar). */
+
+    /** Seçili BIST endeksi (ör. BIST_30) */
     public String selectedIndex = "BIST_30";
-    /** Mevcut pozisyonlar (azami 5). */
+
+    /** Portföydeki pozisyonlar listesi */
     public List<Position> positions = new ArrayList<>();
-    /** Son analiz tarihi (yyyy-MM-dd). */
+
+    /** Son analiz çalıştırma tarihi ({@code YYYY-MM-DD}) */
     public String lastRunDate;
 
 }

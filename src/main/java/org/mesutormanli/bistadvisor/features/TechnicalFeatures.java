@@ -3,15 +3,34 @@ package org.mesutormanli.bistadvisor.features;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Fiyat serisinden RSI, SMA, MACD, volatilite, hacim orani gibi teknik gostergeleri hesaplar. */
+/**
+ * Teknik analiz göstergelerini hesaplayan yardımcı sınıf.
+ * <p>
+ * RSI, SMA, SMA oranı, MACD, üstel hareketli ortalama (EMA), volatilite
+ * ve hacim oranı gibi yaygın teknik göstergeleri fiyat çubukları üzerinden
+ * hesaplar.
+ */
 public final class TechnicalFeatures {
 
     private TechnicalFeatures() {}
 
-    /** Tek bir gunluk fiyat kaydi: tarih, kapanis, hacim. */
+    /**
+     * Bir günlük fiyat verisini temsil eden kayıt.
+     *
+     * @param date   tarih ({@code YYYY-MM-DD})
+     * @param close  kapanış fiyatı
+     * @param volume işlem hacmi
+     */
     public record Bar(String date, double close, double volume) {}
 
-    /** CSV satirlarini (date,close,vol veya eski format date,open,high,low,close,vol) Bar listesine cevirir. */
+    /**
+     * CSV satırlarını {@link Bar} nesnelerine dönüştürür.
+     * {@code tarih,open,high,low,close,volume} veya {@code tarih,close,volume}
+     * formatını destekler.
+     *
+     * @param csvLines CSV satırları
+     * @return {@link Bar} listesi
+     */
     public static List<Bar> toBars(List<String> csvLines) {
         List<Bar> bars = new ArrayList<>();
         for (String line : csvLines) {
@@ -26,6 +45,15 @@ public final class TechnicalFeatures {
         return bars;
     }
 
+    /**
+     * Göreceli Güç Endeksi'ni (RSI) hesaplar.
+     * <p>
+     * RSI = 100 - (100 / (1 + RS)), RS = ortalama kazanç / ortalama kayıp.
+     *
+     * @param bars   fiyat çubukları
+     * @param period dönem (genellikle 14)
+     * @return 0-100 arası RSI değeri, yetersiz veride 50
+     */
     public static double rsi(List<Bar> bars, int period) {
         if (bars.size() <= period) return 50.0;
         double gain = 0, loss = 0;
@@ -41,6 +69,13 @@ public final class TechnicalFeatures {
         return 100.0 - (100.0 / (1.0 + rs));
     }
 
+    /**
+     * Basit hareketli ortalamayı (SMA) hesaplar.
+     *
+     * @param bars   fiyat çubukları
+     * @param period dönem uzunluğu
+     * @return SMA değeri, yetersiz veride son kapanış veya 0
+     */
     public static double sma(List<Bar> bars, int period) {
         if (bars.size() < period) return bars.isEmpty() ? 0 : bars.getLast().close();
         double sum = 0;
@@ -48,19 +83,43 @@ public final class TechnicalFeatures {
         return sum / period;
     }
 
-    /** Son fiyat / SMA(period) - 1 (momentum). */
+    /**
+     * Fiyatın SMA'ya oranını hesaplar: {@code close / sma - 1.0}.
+     * Pozitif değer fiyatın SMA'nın üzerinde olduğunu gösterir.
+     *
+     * @param bars   fiyat çubukları
+     * @param period dönem (20 veya 50)
+     * @return SMA oranı, SMA=0 ise 0
+     */
     public static double smaRatio(List<Bar> bars, int period) {
         double sma = sma(bars, period);
         if (sma == 0) return 0;
         return bars.getLast().close() / sma - 1.0;
     }
 
+    /**
+     * MACD (Moving Average Convergence Divergence) değerini hesaplar.
+     * MACD = 12 günlük EMA - 26 günlük EMA.
+     *
+     * @param bars fiyat çubukları
+     * @return MACD değeri
+     */
     public static double macd(List<Bar> bars) {
         double ema12 = ema(bars, 12);
         double ema26 = ema(bars, 26);
         return ema12 - ema26;
     }
 
+    /**
+     * Üstel hareketli ortalamayı (EMA) hesaplar.
+     * İlk değer SMA olarak başlatılır, ardından:
+     * {@code EMA = fiyat * k + EMA_once * (1 - k)},
+     * {@code k = 2 / (period + 1)}.
+     *
+     * @param bars   fiyat çubukları
+     * @param period dönem
+     * @return EMA değeri
+     */
     private static double ema(List<Bar> bars, int period) {
         if (bars.size() < period) return bars.isEmpty() ? 0 : bars.getLast().close();
         double k = 2.0 / (period + 1);
@@ -71,7 +130,13 @@ public final class TechnicalFeatures {
         return ema;
     }
 
-    /** Son period gunun gunluk getiri standart sapmasi (volatilite). */
+    /**
+     * Günlük getirilerin standart sapmasını hesaplar (volatilite).
+     *
+     * @param bars   fiyat çubukları
+     * @param period dönem (genellikle 20)
+     * @return volatilite (standart sapma), yetersiz veride 0
+     */
     public static double volatility(List<Bar> bars, int period) {
         if (bars.size() < 2) return 0;
         int n = Math.min(period, bars.size() - 1);
@@ -85,7 +150,14 @@ public final class TechnicalFeatures {
         return Math.sqrt(var);
     }
 
-    /** Son gunun hacim ortalamasina gore orani. */
+    /**
+     * Son işlem hacminin periyodik ortalama hacme oranını hesaplar.
+     * > 1.0 ise hacim ortalamanın üzerindedir.
+     *
+     * @param bars   fiyat çubukları
+     * @param period dönem (genellikle 20)
+     * @return hacim oranı, yetersiz veride 1.0
+     */
     public static double volumeRatio(List<Bar> bars, int period) {
         if (bars.size() < period) return 1.0;
         double sum = 0;

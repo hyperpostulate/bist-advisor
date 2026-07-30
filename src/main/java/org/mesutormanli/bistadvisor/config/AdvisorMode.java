@@ -1,20 +1,29 @@
 package org.mesutormanli.bistadvisor.config;
 
-/** Yatirim risk modu: TEMKINLI (%25 risk), DENGELI (%50), AGRESIF (%75). */
+/**
+ * Yatırımcı risk profiline göre üç farklı modu tanımlar:
+ * <ul>
+ *   <li>{@code CONSERVATIVE} (TEMKINLI) — düşük risk, sıkı alım eşiği</li>
+ *   <li>{@code BALANCED} (DENGELI) — dengeli risk</li>
+ *   <li>{@code AGGRESSIVE} (AGRESIF) — yüksek risk, agresif alım</li>
+ * </ul>
+ * <p>
+ * Her mod kendine özgü risk yüzdesi, alım eşiği, stop-loss ve satış skoru
+ * eşik değerlerine sahiptir.
+ */
 public enum AdvisorMode {
     CONSERVATIVE("TEMKINLI", 0.25, 0.75, 0.10, 0.30),
     BALANCED("DENGELI", 0.50, 0.60, 0.15, 0.25),
     AGGRESSIVE("AGRESIF", 0.75, 0.50, 0.25, 0.20);
 
-    /** Kullaniciya gosterilen Turkce etiket. */
     public final String label;
-    /** Alim icin ayrilan nakit yuzdesi (0..1). */
+
     public final double riskPct;
-    /** AL onerisi icin gereken minimum ML guven skoru. */
+
     public final double buyThreshold;
-    /** Bu zarar oraninin uzerinde otomatik SAT sinyali. */
+
     public final double stopLossPct;
-    /** Bu ML skorunun altindaki pozisyonlar SAT olarak isaretlenir. */
+
     public final double sellScoreThreshold;
 
     AdvisorMode(String label, double riskPct, double buyThreshold, double stopLossPct, double sellScoreThreshold) {
@@ -25,7 +34,14 @@ public enum AdvisorMode {
         this.sellScoreThreshold = sellScoreThreshold;
     }
 
-    /** label veya name ile eslesen modu dondurur, eslesmezse BALANCED. */
+    /**
+     * Metin etiketine ({@code "TEMKINLI"}, {@code "DENGELI"}, {@code "AGRESIF"} ya da
+     * enum adı) göre uygun {@code AdvisorMode} değerini döndürür.
+     * Eşleşme bulunamazsa varsayılan olarak {@code BALANCED} döner.
+     *
+     * @param label mod etiketi (case-insensitive)
+     * @return eşleşen {@code AdvisorMode} sabiti
+     */
     public static AdvisorMode fromLabel(String label) {
         if (label == null) return BALANCED;
         for (AdvisorMode m : values()) {

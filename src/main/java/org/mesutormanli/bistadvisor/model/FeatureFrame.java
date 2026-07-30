@@ -4,25 +4,40 @@ import org.mesutormanli.bistadvisor.features.FeatureVector;
 
 import java.util.List;
 
-/** FeatureVector listesini ML modellerinin bekledigi double[][] matrise cevirir. */
+/**
+ * Öznitelik vektörlerini ve etiketleri makine öğrenimi modellerinin
+ * beklediği dizi formatlarına dönüştüren yardımcı sınıf.
+ */
 public final class FeatureFrame {
 
     private FeatureFrame() {}
 
-    /** 11 ozellik adini dondurur (FeatureVector.featureNames()'e yonlendirir). */
+    /**
+     * Öznitelik adlarını döndürür (delege: {@link FeatureVector#featureNames()}).
+     *
+     * @return öznitelik isimleri dizisi
+     */
     public static String[] names() { return FeatureVector.featureNames(); }
 
-    /** FeatureVector listesini satir = ornek, sutun = ozellik olacak sekilde double[][]'e cevirir. */
+    /**
+     * {@link FeatureVector} listesini {@code double[N][11]} matrisine dönüştürür.
+     *
+     * @param features öznitelik vektörleri listesi
+     * @return eğitim matrisi
+     */
     public static double[][] toMatrix(List<FeatureVector> features) {
         double[][] m = new double[features.size()][];
         for (int i = 0; i < features.size(); i++) m[i] = features.get(i).toArray();
         return m;
     }
 
-    /** Integer etiket listesini int[] dizisine cevirir. */
+    /**
+     * {@link Integer} listesini {@code int[]} dizisine dönüştürür.
+     *
+     * @param labels etiket listesi
+     * @return etiket dizisi
+     */
     public static int[] toLabels(List<Integer> labels) {
-        int[] a = new int[labels.size()];
-        for (int i = 0; i < labels.size(); i++) a[i] = labels.get(i);
-        return a;
+        return labels.stream().mapToInt(Integer::intValue).toArray();
     }
 }

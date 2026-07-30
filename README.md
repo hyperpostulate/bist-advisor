@@ -345,12 +345,12 @@ mvn test -Dtest=BistAdvisorTest
 | Senaryo | HTTP Durumu |
 |---------|-------------|
 | Başarılı analiz | 200 OK |
-| Kaynak bulunamadı | 404 Not Found (boş portföy) |
+| Kaynak bulunamadı | 200 OK (boş liste) |
 | Geçersiz istek | 400 Bad Request |
-| Yahoo API hatası | Sessiz atlanır, demo veriye düşülür |
+| Yahoo API hatası | Sessiz atlanır, boş veri döndürülür |
 | state.yaml okunamaz | Boş portföy ile başlatılır |
 
-Servis katmanı hataları loglanır, demo veri veya boş yanıt döndürülür.
+Servis katmanı hataları loglanır, boş yanıt döndürülür.
 
 ---
 
@@ -730,12 +730,12 @@ mvn test -Dtest=BistAdvisorTest
 | Scenario | HTTP Status |
 |----------|-------------|
 | Successful analysis | 200 OK |
-| Resource not found | 404 Not Found (empty portfolio) |
+| Resource not found | 200 OK (empty list) |
 | Invalid request | 400 Bad Request |
-| Yahoo API failure | Silently skipped, falls back to demo data |
+| Yahoo API failure | Silently skipped, empty data returned |
 | state.yaml unreadable | Starts with empty portfolio |
 
-Service-layer errors are logged and fall back to demo data or empty responses.
+Service-layer errors are logged and fall back to empty responses.
 
 ---
 

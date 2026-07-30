@@ -4,22 +4,37 @@ import org.mesutormanli.bistadvisor.features.TechnicalFeatures;
 
 import java.util.List;
 
-/** N gun sonrasi getiriye gore AL/SAT/TUT etiketi uretir. */
+/**
+ * Gelecekteki getiriye göre etiket (AL/SAT/TUT) atayan sınıflandırıcı.
+ * <p>
+ * {@code horizon} gün sonrasındaki fiyata bakarak:
+ * <ul>
+ *   <li>&gt; %5 ise {@code BUY} (0)</li>
+ *   <li>&lt; -%5 ise {@code SELL} (1)</li>
+ *   <li>aksi halde {@code HOLD} (2)</li>
+ * </ul>
+ */
 public final class Labeler {
-    /** AL (getiri > %5). */
+
+    /** Alım etiketi (0) — beklenen getiri &gt; %5 */
     public static final int BUY = 0;
-    /** SAT (getiri < -%5). */
+
+    /** Satım etiketi (1) — beklenen getiri &lt; -%5 */
     public static final int SELL = 1;
-    /** TUT (aralikta). */
+
+    /** Tutma etiketi (2) — getiri %5'ten düşük */
     public static final int HOLD = 2;
 
     private Labeler() {}
 
     /**
-     * @param bars        kronolojik fiyat serisi (en eski -> en yeni)
-     * @param horizon     kac gun sonrasi getiri dikkate alinir
-     * @param sampleIndex ornegin serideki indeksi
-     * @return BUY (0), SELL (1) veya HOLD (2)
+     * Belirtilen endeksteki fiyatı {@code horizon} gün sonrasıyla karşılaştırarak
+     * bir etiket döndürür.
+     *
+     * @param bars        fiyat çubukları serisi
+     * @param horizon     ileriye bakma dönemi (gün)
+     * @param sampleIndex örneklem indeksi
+     * @return {@link #BUY}, {@link #SELL} veya {@link #HOLD}
      */
     public static int labelFor(List<TechnicalFeatures.Bar> bars, int horizon, int sampleIndex) {
         if (sampleIndex + horizon >= bars.size()) return HOLD;

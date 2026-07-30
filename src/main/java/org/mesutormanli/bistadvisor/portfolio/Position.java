@@ -1,19 +1,14 @@
 package org.mesutormanli.bistadvisor.portfolio;
 
-import org.mesutormanli.bistadvisor.config.AdvisorMode;
-import org.mesutormanli.bistadvisor.config.ModelType;
-
-/** Tek bir hisse pozisyonu: sembol, lot adedi ve agirlikli ortalama maliyet. */
-public class Position {
-    public String symbol;
-    public int lots;
-    public double avgCost;
-
-    public Position() {}
-
-    public Position(String symbol, int lots, double avgCost) {
-        this.symbol = symbol;
-        this.lots = lots;
-        this.avgCost = avgCost;
+/**
+ * Bir portföy pozisyonunu temsil eden kayıt.
+ *
+ * @param symbol  hisse senedi sembolü (büyük harfe çevrilir)
+ * @param lots    lot sayısı
+ * @param avgCost ortalama maliyet (TL/lot)
+ */
+public record Position(String symbol, int lots, double avgCost) {
+    public Position {
+        symbol = symbol.toUpperCase();
     }
 }

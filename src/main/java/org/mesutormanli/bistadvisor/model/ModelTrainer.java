@@ -20,9 +20,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * ML model egitimi ve bellek-ici onbellek. SMILE KNN ve SVM serilestirmeyi
- * desteklemediginden modeller JVM omru boyunca bellekte tutulur.
- * Egitim seti secili endeks evreninden Yahoo verisi ile dinamik olarak olusturulur.
+ * Makine öğrenimi modellerini eğiten ve bellek içi önbellekte tutan servis.
+ * <p>
+ * Her (model türü, endeks adı) ikilisi için ayrı bir model örneği saklanır.
+ * Eğitim verisi, endeksteki tüm hisselerin fiyat serileri ve temel verileri
+ * kullanılarak oluşturulur.
  */
 @Service
 public class ModelTrainer {
@@ -34,6 +36,9 @@ public class ModelTrainer {
     private final CacheStore cacheStore;
     private final Map<String, ModelStrategy> cache = new HashMap<>();
 
+    /**
+     * {@code ModelTrainer} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     */
     public ModelTrainer(AppConfig appConfig, BistIndices bistIndices,
                         YahooClient yahoo, CacheStore cacheStore) {
         this.appConfig = appConfig;
@@ -42,11 +47,25 @@ public class ModelTrainer {
         this.cacheStore = cacheStore;
     }
 
+    /**
+     * Model önbellek anahtarını oluşturur: {@code "MODEL_ADI:ENDERS_ADI"}.
+     *
+     * @param type      model türü
+     * @param indexName endeks adı
+     * @return önbellek anahtarı
+     */
     private static String cacheKey(ModelType type, String indexName) {
         return type.name() + ":" + (indexName != null ? indexName.toUpperCase() : "");
     }
 
-    /** Cache'te varsa dondurur, yoksa canli veriyle egitip cache'e ekler. */
+    /**
+     * İstenen model türü ve endeks için önbellekteki modeli döndürür;
+     * yoksa eğitip önbelleğe alır.
+     *
+     * @param type      model türü
+     * @param indexName endeks adı
+     * @return eğitilmiş {@link ModelStrategy} örneği
+     */
     public synchronized ModelStrategy getOrTrain(ModelType type, String indexName) {
         String key = cacheKey(type, indexName);
         ModelStrategy s = cache.get(key);
@@ -59,7 +78,13 @@ public class ModelTrainer {
         return strategy;
     }
 
-    /** CLI train komutu icin zorla egitim, sonucu cache'e yazar. */
+    /**
+     * Modeli zorla yeniden eğitir (önbelleğe bakmadan) ve saklar.
+     *
+     * @param type      model türü
+     * @param indexName endeks adı
+     * @return yeni eğitilmiş {@link ModelStrategy} örneği
+     */
     public synchronized ModelStrategy train(ModelType type, String indexName) {
         TrainingSet ts = buildTrainingSet(indexName);
         ModelStrategy s = ModelStrategyFactory.create(type);
@@ -69,7 +94,14 @@ public class ModelTrainer {
         return s;
     }
 
-    /** Secili endeks evreninden teknik + temel ozellik matrisi ve getiri tabanli etiketler olusturur. */
+    /**
+     * Belirtilen endeksteki tüm hisseler için eğitim verisi oluşturur.
+     * Her hisse için pencere kaydırarak öznitelik vektörleri ve etiketler üretir.
+     *
+     * @param indexName endeks adı
+     * @return eğitim kümesi ({@link TrainingSet})
+     * @throws IllegalStateException hiçbir hisse için veri üretilemezse
+     */
     private TrainingSet buildTrainingSet(String indexName) {
         List<double[]> rows = new ArrayList<>();
         List<Integer> labels = new ArrayList<>();
@@ -99,7 +131,12 @@ public class ModelTrainer {
 
     private record TrainingSet(double[][] features, int[] labels) {}
 
-    /** Bir sembolun fiyat serisini cache'ten veya Yahoo'dan yukler. */
+    /**
+     * Belirtilen hisse için fiyat serisini önbellekten veya Yahoo Finance'den yükler.
+     *
+     * @param symbol hisse sembolü
+     * @return fiyat çubukları listesi
+     */
     private List<Bar> loadSeries(String symbol) {
         LocalDate today = LocalDate.now();
         if (!cacheStore.hasFresh(symbol, today)) {

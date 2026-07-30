@@ -12,7 +12,13 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.IOException;
 
-/** state.yaml okuma/yazma, portfoy kisitlari (maks 5 pozisyon, butce kontrolu) ve islem uygulama. */
+/**
+ * Portföy durumunu yöneten servis.
+ * <p>
+ * Portföy verileri YAML formatında diskte saklanır ({@code state.yaml}).
+ * Bütçe yönetimi, pozisyon ekleme/çıkarma, validasyon ve maksimum pozisyon
+ * limiti (5) gibi işlemleri sağlar. Tüm işlemler thread-safe'tir.
+ */
 @Service
 public class PortfolioService {
     private static final Logger log = LoggerFactory.getLogger(PortfolioService.class);
@@ -22,6 +28,12 @@ public class PortfolioService {
     private final ObjectMapper yamlMapper;
     private PortfolioState state;
 
+    /**
+     * {@code PortfolioService} servisini kurar. YAML mapper'ı yapılandırır
+     * ve mevcut state dosyasını yükler.
+     *
+     * @param appConfig uygulama yapılandırması
+     */
     public PortfolioService(AppConfig appConfig) {
         this.appConfig = appConfig;
         this.yamlMapper = new ObjectMapper(new YAMLFactory());
@@ -29,7 +41,11 @@ public class PortfolioService {
         this.state = load();
     }
 
-    /** Portfoy durumunun savunmacı bir kopyasini dondurur. */
+    /**
+     * Portföy durumunun savunmacı bir kopyasını döndürür (referans paylaşımını önler).
+     *
+     * @return {@link PortfolioState} kopyası
+     */
     public synchronized PortfolioState getState() {
         PortfolioState copy = new PortfolioState();
         copy.budget = state.budget;
@@ -40,50 +56,96 @@ public class PortfolioService {
         copy.positions = new java.util.ArrayList<>();
         if (state.positions != null) {
             for (Position p : state.positions) {
-                copy.positions.add(new Position(p.symbol, p.lots, p.avgCost));
+                copy.positions.add(new Position(p.symbol(), p.lots(), p.avgCost()));
             }
         }
         return copy;
     }
 
-    /** Verilen state'i kaydeder (hafiza + dosya). */
+    /**
+     * Portföy durumunu günceller ve diske yazar.
+     *
+     * @param newState yeni portföy durumu
+     */
     public synchronized void save(PortfolioState newState) {
         this.state = newState;
         write();
     }
 
-    /** Kullanilabilir nakit = butce (islemlerle guncellenen nakit bakiyesi). */
+    /**
+     * Kullanılabilir nakit miktarını döndürür (bütçe, negatif olamaz).
+     *
+     * @param currentPrices güncel fiyatlar (şu an için sadece bütçe bazlı hesaplanır)
+     * @return kullanılabilir nakit (TL)
+     */
     public synchronized double availableCash(java.util.Map<String, Double> currentPrices) {
         return Math.max(0.0, state.budget);
     }
 
-    /** Yeni pozisyon eklenebilir mi? (max 5 kontrolu). */
+    /**
+     * Yeni bir pozisyon eklenip eklenemeyeceğini kontrol eder.
+     *
+     * @return {@code true} eğer pozisyon sayısı maksimumun altındaysa
+     */
     public synchronized boolean canAddPosition() {
         return state.positions != null && state.positions.size() < MAX_POSITIONS;
     }
 
-    /** Maksimum pozisyon sayisi (5). */
+    /**
+     * Maksimum pozisyon sayısını döndürür.
+     *
+     * @return maksimum pozisyon (5)
+     */
     public synchronized int maxPositions() { return MAX_POSITIONS; }
 
-    /** SAT sonrasi kalan slotlar dahil, alim icin kullanilabilir maksimum yeni pozisyon sayisi. */
+    /**
+     * Satış işlemlerinden sonra doldurulabilecek pozisyon sayısını hesaplar.
+     *
+     * @param sellCount yapılacak satış sayısı
+     * @return kalan pozisyon slot sayısı (0-5 arası)
+     */
     public synchronized int buySlotsAfter(int sellCount) {
         int posCount = state.positions != null ? state.positions.size() : 0;
         return Math.clamp(MAX_POSITIONS - (posCount - sellCount), 0, MAX_POSITIONS);
     }
 
-    /** state'teki advisorMode alanini AdvisorMode enum'ina cevirir. */
+    /**
+     * Mevcut yatırımcı modunu döndürür.
+     *
+     * @return {@link AdvisorMode} sabiti
+     */
     public synchronized AdvisorMode advisorMode() { return AdvisorMode.fromLabel(state.advisorMode); }
 
-    /** state'teki modelType alanini ModelType enum'ina cevirir. */
+    /**
+     * Mevcut ML model türünü döndürür.
+     *
+     * @return {@link ModelType} sabiti
+     */
     public synchronized ModelType modelType() { return ModelType.fromKey(state.modelType); }
 
-    /** Atomik read-modify-write: callback ile state mutate edilir, sonra kaydedilir. */
+    /**
+     * Portföy durumuna atomik bir güncelleme uygular ve sonucu diske yazar.
+     *
+     * @param fn durumu değiştiren consumer fonksiyonu
+     */
     public synchronized void updateState(java.util.function.Consumer<PortfolioState> fn) {
         fn.accept(state);
         write();
     }
 
-    /** Gerceklesen AL/SAT islemini portfoye yansitir. Basariliysa true doner. */
+    /**
+     * Bir alım veya satım işlemini portföye uygular.
+     * <ul>
+     *   <li>AL: pozisyonu ekler veya mevcut pozisyonu büyütür, bütçeyi düşer</li>
+     *   <li>SAT: pozisyonu kaldırır, bütçeyi artırır</li>
+     * </ul>
+     *
+     * @param symbol hisse sembolü
+     * @param action işlem türü (AL veya SAT)
+     * @param lots   lot miktarı
+     * @param price  işlem fiyatı
+     * @return {@code true} işlem başarılıysa
+     */
     public synchronized boolean applyTransaction(String symbol, String action, int lots, double price) {
         if (symbol == null || symbol.isBlank()) {
             log.warn("applyTransaction: sembol bos, islem atlandi");
@@ -99,9 +161,7 @@ public class PortfolioService {
         }
         if (state.positions == null) state.positions = new java.util.ArrayList<>();
 
-        Position p = state.positions.stream()
-                .filter(x -> x.symbol.equalsIgnoreCase(symbol.trim()))
-                .findFirst().orElse(null);
+        String sym = symbol.trim().toUpperCase();
 
         if ("AL".equalsIgnoreCase(action.trim())) {
             double cost = lots * price;
@@ -109,26 +169,31 @@ public class PortfolioService {
                 log.warn("applyTransaction: yetersiz butce (ihtiyac={}, mevcut={})", cost, state.budget);
                 return false;
             }
-            if (p != null) {
-                int totalLots = p.lots + lots;
-                p.avgCost = (p.avgCost * p.lots + price * lots) / totalLots;
-                p.lots = totalLots;
+            var idx = -1;
+            for (int i = 0; i < state.positions.size(); i++) {
+                if (state.positions.get(i).symbol().equals(sym)) { idx = i; break; }
+            }
+            if (idx >= 0) {
+                var old = state.positions.get(idx);
+                int totalLots = old.lots() + lots;
+                double newAvgCost = (old.avgCost() * old.lots() + price * lots) / totalLots;
+                state.positions.set(idx, new Position(sym, totalLots, newAvgCost));
             } else {
                 if (!canAddPosition()) {
-                    log.warn("applyTransaction: maks {} pozisyon siniri, {} eklenemedi", MAX_POSITIONS, symbol);
+                    log.warn("applyTransaction: maks {} pozisyon siniri, {} eklenemedi", MAX_POSITIONS, sym);
                     return false;
                 }
-                state.positions.add(new Position(symbol.trim().toUpperCase(), lots, price));
+                state.positions.add(new Position(sym, lots, price));
             }
             state.budget -= cost;
             return true;
         } else if ("SAT".equalsIgnoreCase(action.trim())) {
-            if (p != null) {
+            boolean removed = state.positions.removeIf(p -> p.symbol().equals(sym));
+            if (removed) {
                 state.budget += lots * price;
-                state.positions.remove(p);
                 return true;
             } else {
-                log.warn("applyTransaction: SAT istegi ama {} portfoyde bulunamadi", symbol);
+                log.warn("applyTransaction: SAT istegi ama {} portfoyde bulunamadi", sym);
                 return false;
             }
         } else {
@@ -137,11 +202,16 @@ public class PortfolioService {
         }
     }
 
-    /** Portfoydeki pozisyonlarin toplam maliyetinin butceyi asmadigini dogrular. */
+    /**
+     * Portföyün bütçe kısıtına uygunluğunu doğrular: toplam pozisyon maliyeti
+     * bütçeyi aşmamalıdır.
+     *
+     * @return hata mesajı veya {@code null} (sorun yoksa)
+     */
     public synchronized String validatePortfolio() {
         if (state.positions == null || state.positions.isEmpty()) return null;
         double totalCost = state.positions.stream()
-                .mapToDouble(p -> p.lots * p.avgCost).sum();
+                .mapToDouble(p -> p.lots() * p.avgCost()).sum();
         if (totalCost > state.budget) {
             return "Pozisyon maliyeti (" + String.format("%.0f", totalCost)
                     + ") butceyi (" + String.format("%.0f", state.budget) + ") asiyor";
@@ -149,7 +219,12 @@ public class PortfolioService {
         return null;
     }
 
-    /** state.yaml dosyasindan portfoy durumunu okur, yoksa/yazilamazsa bos state ile baslar. */
+    /**
+     * State dosyasını YAML'dan okur. Dosya yoksa veya okuma hatası olursa
+     * boş bir {@link PortfolioState} döndürür.
+     *
+     * @region veri yükleme
+     */
     private PortfolioState load() {
         File f = new File(appConfig.stateFile());
         if (!f.exists()) return new PortfolioState();
@@ -161,7 +236,9 @@ public class PortfolioService {
         }
     }
 
-    /** state.yaml dosyasina portfoy durumunu yazar. */
+    /**
+     * Portföy durumunu YAML formatında diske yazar.
+     */
     private void write() {
         try {
             yamlMapper.writeValue(new File(appConfig.stateFile()), state);

@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/** CLI komut karsilayicisi: init, run, confirm, status, train. */
 @Component
 public class AdvisorCommands {
 
@@ -22,13 +21,23 @@ public class AdvisorCommands {
     private final DailyAdvisor dailyAdvisor;
     private final ModelTrainer modelTrainer;
 
+    /**
+     * {@code AdvisorCommands} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     */
     public AdvisorCommands(PortfolioService portfolioService, DailyAdvisor dailyAdvisor, ModelTrainer modelTrainer) {
         this.portfolioService = portfolioService;
         this.dailyAdvisor = dailyAdvisor;
         this.modelTrainer = modelTrainer;
     }
 
-    /** Portfoyu baslatir: butce, mod, model ve baslangic pozisyonlari. */
+    /**
+     * Portföyü ilklendirir: bütçe, yatırım modu, model türü ve başlangıç pozisyonlarını atar.
+     *
+     * @param budget   toplam bütçe (TL)
+     * @param mode     yatırım modu etiketi (TEMKINLI/DENGELI/AGRESIF)
+     * @param model    ML model anahtarı (random_forest/svm/knn)
+     * @param positions başlangıç pozisyonları listesi
+     */
     public void init(double budget, String mode, String model, List<Position> positions) {
         PortfolioState state = portfolioService.getState();
         state.budget = budget;
@@ -43,13 +52,20 @@ public class AdvisorCommands {
         System.out.println("Portföy kaydedildi: bütçe=" + budget + ", mod=" + state.advisorMode + ", model=" + state.modelType);
     }
 
-    /** Gunluk analizi calistirir ve sonuclari yazdirir. */
+    /**
+     * Günlük analizi çalıştırır ve sonuçları konsola yazdırır.
+     */
     public void run() {
         AnalysisResult r = dailyAdvisor.analyze();
         print(r);
     }
 
-    /** Komut satirindan AL/SAT islemlerini onaylar. Format: SEMBOL,AL/SAT,lot,fiyat */
+    /**
+     * Kullanıcı tarafından onaylanan işlemleri portföye uygular.
+     * Her işlem {@code SEMBOL,AL/SAT,lot,fiyat} formatında olmalıdır.
+     *
+     * @param args onaylanan işlem listesi
+     */
     public void confirm(List<String> args) {
         List<String> errors = new ArrayList<>();
         int applied = 0;
@@ -84,18 +100,22 @@ public class AdvisorCommands {
         }
     }
 
-    /** Portfoy durumunu yazdirir: butce, mod, model, pozisyonlar. */
+    /**
+     * Portföyün mevcut durumunu konsola yazdırır (bütçe, mod, model, pozisyonlar).
+     */
     public void status() {
         PortfolioState s = portfolioService.getState();
         System.out.println("Bütçe: " + s.budget + " TL");
         System.out.println("Mod: " + s.advisorMode + " | Model: " + s.modelType);
         System.out.println("Pozisyonlar (" + s.positions.size() + "/5):");
         for (Position p : s.positions) {
-            System.out.println("  " + p.symbol + " " + p.lots + " lot @ " + p.avgCost);
+            System.out.println("  " + p.symbol() + " " + p.lots() + " lot @ " + p.avgCost());
         }
     }
 
-    /** ML modelini canli veriyle yeniden egitir. */
+    /**
+     * Seçili modeli ve endeksi kullanarak ML modelini eğitir ve bellekte saklar.
+     */
     public void train() {
         ModelType t = portfolioService.modelType();
         String idx = portfolioService.getState().selectedIndex;
@@ -104,14 +124,19 @@ public class AdvisorCommands {
         System.out.println("Model egitildi (bellekte): " + t.key);
     }
 
+    /**
+     * Analiz sonucunu konsola formatlı biçimde yazdırır.
+     *
+     * @param r analiz sonucu
+     */
     private void print(AnalysisResult r) {
         System.out.println("=== Günlük Öneri (" + r.positionCount() + "/5) | Nakit: " + Math.round(r.availableCash()) + " TL ===");
         System.out.println("-- Mevcut Portföy --");
         java.util.Map<String, Position> posMap = new java.util.HashMap<>();
-        for (Position p : portfolioService.getState().positions) posMap.put(p.symbol, p);
+        for (Position p : portfolioService.getState().positions) posMap.put(p.symbol(), p);
         for (Recommendation x : r.holdings()) {
             Position p = posMap.get(x.symbol());
-            double pnlTl = p != null ? (x.price() - p.avgCost) * x.lots() : 0;
+            double pnlTl = p != null ? (x.price() - p.avgCost()) * x.lots() : 0;
             System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot | " + x.action()
                     + " | " + x.note() + " | " + String.format("%,.0f", pnlTl) + " TL");
         }

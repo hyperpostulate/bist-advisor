@@ -2,16 +2,25 @@ package org.mesutormanli.bistadvisor.model;
 
 import org.mesutormanli.bistadvisor.config.ModelType;
 
-/** ModelType enum'ina gore uygun ModelStrategy ornegi uretir. */
+/**
+ * {@link ModelType} sabitine göre uygun {@link ModelStrategy} örneğini
+ * oluşturan factory sınıfı.
+ */
 public final class ModelStrategyFactory {
     private ModelStrategyFactory() {}
 
-    /** Verilen tip icin yeni bir strateji ornegi olusturur. */
+    /**
+     * Belirtilen model türü için yeni bir strateji örneği oluşturur.
+     *
+     * @param type model türü ({@link ModelType#RANDOM_FOREST},
+     *             {@link ModelType#SVM}, {@link ModelType#KNN})
+     * @return yeni {@link ModelStrategy} örneği
+     */
     public static ModelStrategy create(ModelType type) {
         return switch (type) {
             case SVM -> new SvmStrategy();
             case KNN -> new KnnStrategy();
-            default -> new RandomForestStrategy();
+            case RANDOM_FOREST -> new RandomForestStrategy();
         };
     }
 }

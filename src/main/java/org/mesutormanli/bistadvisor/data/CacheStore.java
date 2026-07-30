@@ -13,18 +13,35 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Fiyat serilerini cache/ dizininde CSV olarak saklar. Her sembol ayri bir dosyada tutulur. */
+/**
+ * Hisse senedi fiyat verilerini CSV dosyaları halinde diskte önbelleğe alır.
+ * <p>
+ * Her sembol için {@code price_SEMBOL.csv} formatında bir dosya tutulur.
+ * Önbellek dizini {@code AppConfig.cacheDir()} ile belirlenir.
+ */
 @Component
 public class CacheStore {
     private static final Logger log = LoggerFactory.getLogger(CacheStore.class);
     private final Path cacheDir;
 
+    /**
+     * Önbellek dizinini oluşturur (yoksa).
+     *
+     * @param appConfig uygulama yapılandırması
+     */
     public CacheStore(AppConfig appConfig) {
         this.cacheDir = Path.of(appConfig.cacheDir());
         cacheDir.toFile().mkdirs();
     }
 
-    /** Bugune ait veri var mi? (son satirin tarihi bugun ile basliyorsa taze kabul edilir.) */
+    /**
+     * Belirtilen hisse için önbellekte taze (bugünün tarihini içeren) veri olup
+     * olmadığını kontrol eder.
+     *
+     * @param symbol hisse sembolü
+     * @param today  bugünün tarihi
+     * @return {@code true} eğer önbellek tazeyse
+     */
     public boolean hasFresh(String symbol, LocalDate today) {
         Path f = priceFile(symbol);
         if (!f.toFile().exists()) return false;
@@ -36,7 +53,12 @@ public class CacheStore {
         }
     }
 
-    /** Sembolun cache dosyasindaki tum satirlari okur. */
+    /**
+     * Belirtilen hisse için önbellekteki tüm satırları okur.
+     *
+     * @param symbol hisse sembolü
+     * @return satır listesi, dosya yoksa boş liste
+     */
     public List<String> readLines(String symbol) {
         try {
             return Files.readAllLines(priceFile(symbol), StandardCharsets.UTF_8);
@@ -45,7 +67,12 @@ public class CacheStore {
         }
     }
 
-    /** Sembolun cache dosyasina satirlari yazar (varsa uzerine yazar). */
+    /**
+     * Belirtilen hisse için önbellek dosyasına satırları yazar (varsa üzerine yazar).
+     *
+     * @param symbol hisse sembolü
+     * @param lines  yazılacak satırlar ({@code tarih,kapanis,hacim} formatında)
+     */
     public void writeLines(String symbol, List<String> lines) {
         try {
             Files.write(priceFile(symbol), lines, StandardCharsets.UTF_8,
@@ -55,7 +82,12 @@ public class CacheStore {
         }
     }
 
-    /** Cache dosya yolunu dondurur: cache/price_SEMBOL.csv. */
+    /**
+     * Bir hisse sembolü için önbellek dosyasının tam yolunu döndürür.
+     *
+     * @param symbol hisse sembolü
+     * @return {@code {cacheDir}/price_SEMBOL.csv} yolu
+     */
     private Path priceFile(String symbol) {
         return cacheDir.resolve("price_" + symbol.toUpperCase() + ".csv");
     }

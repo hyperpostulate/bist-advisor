@@ -8,14 +8,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * One-vs-rest SVM stratejisi (Gaussian kernel). SMILE SVM ikili
- * siniflandirici oldugundan her sinif (AL/SAT/TUT) icin ayri bir
- * binary SVM egitilir, tahminde en yuksek sigmoid-skorlu sinif secilir.
+ * Destek Vektör Makinesi (SVM) sınıflandırma stratejisi (Gaussian kernel).
+ * <p>
+ * Her sınıf (AL, SAT, TUT) için ayrı bir ikili SVM modeli eğitir (one-vs-rest).
+ * Tahmin aşamasında karar fonksiyonu değeri sigmoid ile {@code [0, 1]} aralığına
+ * dönüştürülür ve en yüksek skorlu sınıf seçilir.
+ * SMILE kütüphanesinin {@link SVM} sınıfını kullanır.
  */
-public class SvmStrategy implements ModelStrategy {
+public final class SvmStrategy implements ModelStrategy {
     private List<SVM<double[]>> binaries = new ArrayList<>();
     private int numClasses = 3;
 
+    /**
+     * Her sınıf için bir ikili SVM modeli eğitir (one-vs-rest).
+     * Gaussian kernel (sigma=1.0) ve C=1.0 düzenleme parametresi kullanılır.
+     *
+     * @param features {@code double[N][11]} eğitim verisi
+     * @param labels   {@code int[N]} etiketler (0=AL, 1=SAT, 2=TUT)
+     */
     @Override
     public synchronized void train(double[][] features, int[] labels) {
         binaries.clear();
@@ -27,7 +37,13 @@ public class SvmStrategy implements ModelStrategy {
         }
     }
 
-    /** Her binary SVM'in decision value'sunu sigmoid ile 0..1'e cevirir, en yuksek skorlu sinifi secer. */
+    /**
+     * Üç ikili SVM modelinin karar değerlerini sigmoid ile olasılığa dönüştürür
+     * ve en yüksek skorlu sınıfı döndürür.
+     *
+     * @param features 11 boyutlu öznitelik vektörü
+     * @return {@code [sınıf, skor]} — sınıf: 0=AL, 1=SAT, 2=TUT
+     */
     @Override
     public synchronized double[] predict(double[] features) {
         if (binaries.isEmpty()) {

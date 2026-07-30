@@ -16,7 +16,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** REST API kontrolcusu. Tum uclari /api altinda, web arayuzu ve CLI tarafindan kullanilir. */
+/**
+ * REST API denetleyicisi. Web arayüzüne portföy yönetimi, analiz ve onay
+ * işlemleri için HTTP uç noktaları sunar.
+ * <p>
+ * Tüm uç noktalar {@code /api} ön eki altındadır.
+ */
 @RestController
 @RequestMapping("/api")
 public class AdvisorController {
@@ -24,6 +29,9 @@ public class AdvisorController {
     private final DailyAdvisor dailyAdvisor;
     private final BistIndices bistIndices;
 
+    /**
+     * {@code AdvisorController} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     */
     public AdvisorController(PortfolioService portfolioService, DailyAdvisor dailyAdvisor,
                             BistIndices bistIndices) {
         this.portfolioService = portfolioService;
@@ -31,7 +39,12 @@ public class AdvisorController {
         this.bistIndices = bistIndices;
     }
 
-    /** Desteklenen modlari, modelleri, endeksleri ve anlik secimi dondurur. */
+    /**
+     * Uygulama yapılandırmasını döndürür: mevcut modlar, modeller, endeksler
+     * ve seçili değerler.
+     *
+     * @return yapılandırma haritası
+     */
     @GetMapping("/config")
     public Map<String, Object> config() {
         Map<String, Object> m = new HashMap<>();
@@ -49,48 +62,52 @@ public class AdvisorController {
         return m;
     }
 
-    /** Mevcut portfoy durumunu dondurur. */
+    /**
+     * Portföy durumunu döndürür.
+     *
+     * @return {@link PortfolioState} nesnesi
+     */
     @GetMapping("/portfolio")
     public PortfolioState portfolio() { return portfolioService.getState(); }
 
-    /** Portfoy tablosu icin zenginlestirilmis gorunum (guncel fiyatlar, kar/zarar). */
+    /**
+     * Portföyün görselleştirme için zenginleştirilmiş görünümünü döndürür:
+     * her pozisyon için güncel fiyat, kâr/zarar bilgileri ve toplam değerler.
+     *
+     * @return portföy görünüm haritası
+     */
     @GetMapping("/portfolio-view")
     public Map<String, Object> portfolioView() {
         PortfolioState s = portfolioService.getState();
         Map<String, Double> prices = dailyAdvisor.currentPrices();
-        List<Map<String, Object>> rows = new ArrayList<>();
         double totalInvested = 0, totalCurrent = 0;
+        var rows = new ArrayList<Map<String, Object>>();
         for (Position p : s.positions) {
-            double cur = prices.getOrDefault(p.symbol, p.avgCost);
-            double costTotal = p.lots * p.avgCost;
-            double curTotal = p.lots * cur;
+            double cur = prices.getOrDefault(p.symbol(), p.avgCost());
+            double costTotal = p.lots() * p.avgCost();
+            double curTotal = p.lots() * cur;
             totalInvested += costTotal;
             totalCurrent += curTotal;
-            double pnlPct = (cur - p.avgCost) / p.avgCost;
-            double pnlTl = curTotal - costTotal;
-            Map<String, Object> r = new HashMap<>();
-            r.put("symbol", p.symbol);
-            r.put("lots", p.lots);
-            r.put("avgCost", p.avgCost);
-            r.put("costTotal", costTotal);
-            r.put("currentPrice", cur);
-            r.put("currentTotal", curTotal);
-            r.put("pnlPct", pnlPct);
-            r.put("pnlTl", pnlTl);
-            rows.add(r);
+            rows.add(Map.of(
+                    "symbol", p.symbol(), "lots", p.lots(), "avgCost", p.avgCost(),
+                    "costTotal", costTotal, "currentPrice", cur, "currentTotal", curTotal,
+                    "pnlPct", (cur - p.avgCost()) / p.avgCost(), "pnlTl", curTotal - costTotal
+            ));
         }
-        Map<String, Object> out = new HashMap<>();
-        out.put("budget", s.budget);
-        out.put("advisorMode", s.advisorMode);
-        out.put("modelType", s.modelType);
-        out.put("positions", rows);
-        out.put("availableCash", portfolioService.availableCash(prices));
-        out.put("totalInvested", totalInvested);
-        out.put("totalCurrent", totalCurrent);
-        return out;
+        return Map.of(
+                "budget", s.budget, "advisorMode", s.advisorMode, "modelType", s.modelType,
+                "positions", rows, "availableCash", portfolioService.availableCash(prices),
+                "totalInvested", totalInvested, "totalCurrent", totalCurrent
+        );
     }
 
-    /** Portfoyu gunceller (butce, mod, model, endeks, pozisyonlar). */
+    /**
+     * Portföy durumunu günceller (bütçe, mod, model, endeks, pozisyonlar).
+     * Validasyon hatası varsa uyarı döndürür.
+     *
+     * @param incoming yeni portföy durumu
+     * @return işlem sonucu ({@code status: ok/warning})
+     */
     @PostMapping("/portfolio")
     public Map<String, String> savePortfolio(@RequestBody PortfolioState incoming) {
         Map<String, String> r = new HashMap<>();
@@ -112,14 +129,30 @@ public class AdvisorController {
         return r;
     }
 
-    /** Gunluk analizi calistirir ve AL/SAT/TUT onerilerini dondurur. */
+    /**
+     * Günlük analizi çalıştırır ve sonucu döndürür.
+     *
+     * @return {@link AnalysisResult} nesnesi
+     */
     @PostMapping("/analyze")
     public AnalysisResult analyze() { return dailyAdvisor.analyze(); }
 
-    /** Web uzerinden istek onay formatı. */
+    /**
+     * Onaylanmış bir işlemi temsil eden istek gövdesi kaydı.
+     *
+     * @param symbol hisse sembolü
+     * @param action işlem türü (AL/SAT)
+     * @param lots   lot miktarı
+     * @param price  işlem fiyatı
+     */
     public record ConfirmReq(String symbol, String action, int lots, double price) {}
 
-    /** Bekleyen islemleri onaylar ve portfoye uygular. */
+    /**
+     * Bir liste onaylanmış işlemi portföye uygular.
+     *
+     * @param reqs onaylanmış işlem listesi
+     * @return işlem sonucu (uygulanan/başarısız sayıları)
+     */
     @PostMapping("/confirm")
     public Map<String, String> confirm(@RequestBody List<ConfirmReq> reqs) {
         int applied = 0;
@@ -139,7 +172,11 @@ public class AdvisorController {
         return res;
     }
 
-    /** Onay icin AL ve SAT onerilerini (TUT haric) tek listede doner. */
+    /**
+     * Bekleyen işlemleri döndürür: satış önerileri ve alım önerileri.
+     *
+     * @return bekleyen işlem listesi
+     */
     @GetMapping("/pending")
     public List<Map<String, Object>> pending() {
         AnalysisResult a = dailyAdvisor.analyze();
@@ -153,6 +190,12 @@ public class AdvisorController {
         return out;
     }
 
+    /**
+     * Bir {@link Recommendation} nesnesini haritaya dönüştürür.
+     *
+     * @param r öneri kaydı
+     * @return harita temsili
+     */
     private Map<String, Object> toMap(Recommendation r) {
         Map<String, Object> m = new HashMap<>();
         m.put("index", r.index());
