@@ -279,6 +279,7 @@ async function addPosition() {
     if (st.positions.length >= 5) { alert(t('maxPositions')); return; }
     st.positions.push({symbol: sym, lots, avgCost: cost});
   }
+  st.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
   await post('/api/portfolio', st);
   document.getElementById('addSymbol').value = '';
   document.getElementById('addLots').value = '';
@@ -288,6 +289,7 @@ async function addPosition() {
 async function removePosition(sym) {
   const st = await getState();
   st.positions = st.positions.filter(p => p.symbol !== sym);
+  st.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
   await post('/api/portfolio', st);
   await loadPortfolio();
   alert(sym + t('removed'));
@@ -338,6 +340,7 @@ async function post(u,b){ return await(await fetch(u,{method:'POST',headers:{'Co
 
 function render(r) {
   let h = '<p class="small">' + t('availableCash') + ': ' + fmt(r.availableCash) + ' TL | ' + t('position') + ': ' + r.positionCount + '/' + r.maxPositions + '</p>';
+  r.holdings.sort((a, b) => a.symbol.localeCompare(b.symbol));
   h += '<h3 style="color:#9aa;font-size:13px">' + t('holdingsTitle') + '</h3><table><tr><th>' + t('colNo') + '</th><th>' + t('colSymbol') + '</th><th>' + t('colAction') + '</th><th>' + t('colLots') + '</th><th>' + t('colPrice') + '</th><th>' + t('colNote') + '</th></tr>';
   for (const x of r.holdings) h += row(x);
   h += '</table>';
@@ -356,6 +359,7 @@ function renderConfirm(r) {
   const items = [];
   for (const x of r.holdings) if (x.action === 'SAT') items.push(x);
   for (const x of r.buys) if (x.action === 'AL') items.push(x);
+  items.sort((a, b) => a.symbol.localeCompare(b.symbol));
   if (items.length === 0) {
     document.getElementById('confirmArea').innerHTML = '<p class="small">' + t('confirmEmpty') + '</p>';
     return;
@@ -390,6 +394,7 @@ async function saveBudget() {
 function renderPortfolio(v) {
   const bInput = document.getElementById('budget');
   if (bInput && (bInput.value === '' || bInput.value == null)) bInput.value = v.budget;
+  v.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
   let h = '<p class="small">' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/5</p>';
   if (v.positions.length === 0) {
     h += '<p class="small">' + t('noPositions') + '</p>';

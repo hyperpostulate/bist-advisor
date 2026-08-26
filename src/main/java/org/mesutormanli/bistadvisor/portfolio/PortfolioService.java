@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Comparator;
 
 /**
  * Portföy durumunu yöneten servis.
@@ -39,6 +40,7 @@ public class PortfolioService {
         this.yamlMapper = new ObjectMapper(new YAMLFactory());
         this.yamlMapper.findAndRegisterModules();
         this.state = load();
+        sortPositions();
     }
 
     /**
@@ -69,6 +71,7 @@ public class PortfolioService {
      */
     public synchronized void save(PortfolioState newState) {
         this.state = newState;
+        sortPositions();
         write();
     }
 
@@ -130,6 +133,7 @@ public class PortfolioService {
      */
     public synchronized void updateState(java.util.function.Consumer<PortfolioState> fn) {
         fn.accept(state);
+        sortPositions();
         write();
     }
 
@@ -186,11 +190,13 @@ public class PortfolioService {
                 state.positions.add(new Position(sym, lots, price));
             }
             state.budget -= cost;
+            sortPositions();
             return true;
         } else if ("SAT".equalsIgnoreCase(action.trim())) {
             boolean removed = state.positions.removeIf(p -> p.symbol().equals(sym));
             if (removed) {
                 state.budget += lots * price;
+                sortPositions();
                 return true;
             } else {
                 log.warn("applyTransaction: SAT istegi ama {} portfoyde bulunamadi", sym);
@@ -219,6 +225,12 @@ public class PortfolioService {
         return null;
     }
 
+    private void sortPositions() {
+        if (state.positions != null) {
+            state.positions.sort(Comparator.comparing(Position::symbol));
+        }
+    }
+
     /**
      * State dosyasını YAML'dan okur. Dosya yoksa veya okuma hatası olursa
      * boş bir {@link PortfolioState} döndürür.
@@ -229,7 +241,11 @@ public class PortfolioService {
         File f = new File(appConfig.stateFile());
         if (!f.exists()) return new PortfolioState();
         try {
-            return yamlMapper.readValue(f, PortfolioState.class);
+            PortfolioState s = yamlMapper.readValue(f, PortfolioState.class);
+            if (s.positions != null) {
+                s.positions.sort(Comparator.comparing(Position::symbol));
+            }
+            return s;
         } catch (IOException e) {
             log.warn("state.yaml okunamadi, bos baslatiliyor: {}", e.getMessage());
             return new PortfolioState();
