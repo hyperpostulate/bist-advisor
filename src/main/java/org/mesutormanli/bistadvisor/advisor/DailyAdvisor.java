@@ -212,9 +212,7 @@ public class DailyAdvisor {
      */
     private double[] featuresFor(String symbol, List<Bar> bars) {
         Fundamentals f = yahoo.fetchFundamentals(symbol);
-        FeatureVector fv = FeatureVector.fromBars(f, bars);
-        fv.normalize();
-        return fv.toArray();
+        return FeatureVector.fromBars(f, bars).normalize().toArray();
     }
 
     /**

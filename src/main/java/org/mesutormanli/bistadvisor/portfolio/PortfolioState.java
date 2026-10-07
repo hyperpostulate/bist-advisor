@@ -15,7 +15,10 @@ import java.util.List;
  */
 public class PortfolioState {
 
-    /** Toplam bütçe (TL) */
+    /**
+     * Toplam sermaye (TL): nakit + pozisyonların maliyet tabanı. Kullanılabilir nakit
+     * bu alandan türetilir (bkz. {@code PortfolioService}).
+     */
     public double budget = 0.0;
 
     /** Yatırım modu (enum adı olarak saklanır) */

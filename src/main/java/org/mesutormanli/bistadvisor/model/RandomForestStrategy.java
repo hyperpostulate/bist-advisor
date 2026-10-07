@@ -5,6 +5,7 @@ import smile.classification.RandomForest;
 import smile.data.DataFrame;
 import smile.data.Tuple;
 import smile.data.formula.Formula;
+import smile.data.type.StructType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,68 +13,72 @@ import java.util.List;
 /**
  * Random Forest sınıflandırma stratejisi (one-vs-rest).
  * <p>
- * Her sınıf (AL, SAT, TUT) için ayrı bir ikili Random Forest modeli eğitir.
- * Tahmin aşamasında üç modelden en yüksek olasılık skoruna sahip sınıf seçilir.
- * SMILE kütüphanesinin {@link RandomForest} sınıfını kullanır.
+ * Eğitim etiketlerinde <strong>gözlenen</strong> her sınıf için ayrı bir ikili Random Forest
+ * modeli eğitilir. Etiketler {@link ClassSpace} ile sıkı indekslere eşlenir; eğitim setinde hiç
+ * oluşmayan sınıf için ikili model eğitilmez ve tahminde istisna fırlatılmaz. Tek sınıf varsa
+ * model eğitilmez, sabit tahmin döner.
+ * <p>
+ * Tahmin aşamasında modellerden en yüksek olasılık skoruna sahip sınıf seçilir. SMILE
+ * kütüphanesinin {@link RandomForest} sınıfını kullanır.
  */
 public final class RandomForestStrategy implements ModelStrategy {
     private final List<RandomForest> forests = new ArrayList<>();
-    private DataFrame schemaFrame;
-    private static final int NUM_CLASSES = 3;
+
+    /** Yalnızca öznitelik kolonlarını içeren şema (etiket kolonu hariç). */
+    private StructType schema;
+
+    private ClassSpace classes;
 
     /**
-     * Her sınıf için bir ikili Random Forest modeli eğitir (one-vs-rest).
+     * Gözlenen her sınıf için bir ikili Random Forest modeli eğitir (one-vs-rest).
      *
      * @param features {@code double[N][11]} eğitim verisi
      * @param labels   {@code int[N]} etiketler (0=AL, 1=SAT, 2=TUT)
      */
     @Override
     public synchronized void train(double[][] features, int[] labels) {
-        String[] names = FeatureFrame.names();
-        DataFrame df = DataFrame.of(features, names);
-        int[][] cls2d = new int[labels.length][1];
-        for (int i = 0; i < labels.length; i++) cls2d[i][0] = labels[i];
-        DataFrame clsDf = DataFrame.of(cls2d, "sinif");
-        df = df.merge(clsDf);
-        this.schemaFrame = df;
-
         forests.clear();
-        for (int c = 0; c < NUM_CLASSES; c++) {
-            int[] binary = new int[labels.length];
-            for (int i = 0; i < labels.length; i++) binary[i] = (labels[i] == c) ? 1 : 0;
-
-            DataFrame bdf = DataFrame.of(features, names);
+        classes = ClassSpace.of(labels);
+        String[] names = FeatureFrame.names();
+        this.schema = DataFrame.of(features, names).schema();
+        if (classes.size() == 1) return;
+        for (int i = 0; i < classes.size(); i++) {
+            int target = classes.label(i);
             int[][] bcls = new int[labels.length][1];
-            for (int i = 0; i < labels.length; i++) bcls[i][0] = binary[i];
-            bdf = bdf.merge(DataFrame.of(bcls, "sinif"));
+            for (int j = 0; j < labels.length; j++) bcls[j][0] = (labels[j] == target) ? 1 : 0;
+            DataFrame bdf = DataFrame.of(features, names).merge(DataFrame.of(bcls, "sinif"));
             forests.add(RandomForest.fit(Formula.lhs("sinif"), bdf));
         }
     }
 
     /**
-     * Üç ikili Random Forest modelini çalıştırır ve en yüksek skorlu sınıfı döndürür.
+     * İkili Random Forest modellerini çalıştırır ve en yüksek skorlu sınıfı döndürür.
      *
      * @param features 11 boyutlu öznitelik vektörü
-     * @return {@code [sınıf, skor]} — sınıf: 0=AL, 1=SAT, 2=TUT
+     * @return {@code [sınıf, skor]} — sınıf: 0=AL, 1=SAT, 2=TUT;
+     *         henüz eğitim yapılmamışsa {@code [TUT, 0.0]},
+     *         tek sınıflı eğitimde {@code [gözlenen sınıf, 1.0]}
      */
     @Override
     public synchronized double[] predict(double[] features) {
-        if (schemaFrame == null || forests.isEmpty()) {
-            return new double[]{0, 0.0};
+        if (classes == null) {
+            return new double[]{Labeler.HOLD, 0.0};
         }
-        Tuple t = Tuple.of(schemaFrame.schema(), java.util.Arrays.stream(features).boxed().toArray());
+        if (classes.size() == 1) {
+            return new double[]{classes.label(0), 1.0};
+        }
+        Tuple t = Tuple.of(schema, features);
         double bestScore = -1;
-        int bestClass = 0;
-        for (int c = 0; c < NUM_CLASSES; c++) {
+        int best = 0;
+        for (int i = 0; i < forests.size(); i++) {
             double[] prob = new double[2];
-            forests.get(c).predict(t, prob);
-            double score = prob[1];
-            if (score > bestScore) {
-                bestScore = score;
-                bestClass = c;
+            forests.get(i).predict(t, prob);
+            if (prob[1] > bestScore) {
+                bestScore = prob[1];
+                best = i;
             }
         }
-        return new double[]{bestClass, bestScore};
+        return new double[]{classes.label(best), bestScore};
     }
 
     @Override

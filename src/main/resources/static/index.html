@@ -131,6 +131,8 @@ const I18N = {
     maxPositions: "Maksimum 5 pozisyon.",
     noTxSelected: "Hiçbir işlem seçilmedi.",
     txApplied: "İşlemler uygulandı: ",
+    txFailed: "başarısız",
+    capital: "Sermaye",
     availableCash: "Kullanılabilir nakit",
     position: "Pozisyon",
     holdingsTitle: "Mevcut Portföy (SAT önerileri önce)",
@@ -191,6 +193,8 @@ const I18N = {
     maxPositions: "Maximum 5 positions.",
     noTxSelected: "No transaction selected.",
     txApplied: "Transactions applied: ",
+    txFailed: "failed",
+    capital: "Capital",
     availableCash: "Available cash",
     position: "Position",
     holdingsTitle: "Current Portfolio (SELL first)",
@@ -331,12 +335,18 @@ async function confirmTx() {
     reqs.push({symbol, action, lots, price});
   });
   if (reqs.length === 0) { alert(t('noTxSelected')); return; }
-  await post('/api/confirm', reqs);
-  alert(t('txApplied') + reqs.length);
+  const res = await post('/api/confirm', reqs);
+  let msg = t('txApplied') + (res.applied !== undefined ? res.applied : reqs.length);
+  if (res.failed && res.failed !== '0') msg += ' / ' + t('txFailed') + ': ' + res.failed;
+  alert(msg);
   analyze();
 }
 async function getState(){ return await(await fetch('/api/portfolio')).json(); }
-async function post(u,b){ return await(await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json(); }
+async function post(u,b){
+  const r = await(await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json();
+  if (r && r.status && r.status !== 'ok') alert((r.status === 'error' ? '⚠ ' : '') + (r.message || r.status));
+  return r;
+}
 
 function render(r) {
   let h = '<p class="small">' + t('availableCash') + ': ' + fmt(r.availableCash) + ' TL | ' + t('position') + ': ' + r.positionCount + '/' + r.maxPositions + '</p>';
@@ -395,7 +405,7 @@ function renderPortfolio(v) {
   const bInput = document.getElementById('budget');
   if (bInput && (bInput.value === '' || bInput.value == null)) bInput.value = v.budget;
   v.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
-  let h = '<p class="small">' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/5</p>';
+  let h = '<p class="small">' + t('capital') + ': ' + fmt(v.budget) + ' TL | ' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/' + 5 + '</p>';
   if (v.positions.length === 0) {
     h += '<p class="small">' + t('noPositions') + '</p>';
   } else {

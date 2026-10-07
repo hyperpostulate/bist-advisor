@@ -62,12 +62,12 @@ public class BistAdvisorApplication {
     }
 
     /**
-     * {code init} komutunu işler: bütçe, mod, model ve portföy pozisyonlarını
+     * {code init} komutunu işler: toplam sermaye, mod, model ve portföy pozisyonlarını
      * komut satırı argümanlarından ayrıştırır ve {code AdvisorCommands.init()}'e
      * yönlendirir.
      *
      * @param commands CLI komutlarını işleyen servis
-     * @param args     komut satırı argümanları ({code --budget=...}, {code --mode=...},
+     * @param args     komut satırı argümanları ({code --budget=} toplam sermaye, {code --mode=...},
      *                 {code --model=...}, {code --pos=SEMBOL:lot:fiyat,...})
      */
     private void runInit(AdvisorCommands commands, String[] args) {

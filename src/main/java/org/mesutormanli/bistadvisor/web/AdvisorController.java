@@ -25,6 +25,10 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 public class AdvisorController {
+    /** Geçerli hisse sembolü biçimi (BIST kodları: harf/rakam). */
+    private static final java.util.regex.Pattern SYMBOL_PATTERN =
+            java.util.regex.Pattern.compile("[A-Z0-9]{1,15}");
+
     private final PortfolioService portfolioService;
     private final DailyAdvisor dailyAdvisor;
     private final BistIndices bistIndices;
@@ -88,10 +92,11 @@ public class AdvisorController {
             double curTotal = p.lots() * cur;
             totalInvested += costTotal;
             totalCurrent += curTotal;
+            double pnlPct = p.avgCost() > 0 ? (cur - p.avgCost()) / p.avgCost() : 0.0;
             rows.add(Map.of(
                     "symbol", p.symbol(), "lots", p.lots(), "avgCost", p.avgCost(),
                     "costTotal", costTotal, "currentPrice", cur, "currentTotal", curTotal,
-                    "pnlPct", (cur - p.avgCost()) / p.avgCost(), "pnlTl", curTotal - costTotal
+                    "pnlPct", pnlPct, "pnlTl", curTotal - costTotal
             ));
         }
         return Map.of(
@@ -102,15 +107,21 @@ public class AdvisorController {
     }
 
     /**
-     * Portföy durumunu günceller (bütçe, mod, model, endeks, pozisyonlar).
-     * Validasyon hatası varsa uyarı döndürür.
+     * Portföy durumunu günceller (toplam sermaye, mod, model, endeks, pozisyonlar).
+     * Gelen veri yapısal olarak geçersizse hiçbir şey yazılmaz ve
+     * {@code {"status":"error"}} döndürülür. İhmal edilebilir iş kuralları ihlalinde
+     * (ör. maliyetin sermâyeyi aşması) kayıt yapılır ve {@code {"status":"warning"}}
+     * döndürülür.
      *
      * @param incoming yeni portföy durumu
-     * @return işlem sonucu ({@code status: ok/warning})
+     * @return işlem sonucu ({@code status: ok/warning/error})
      */
     @PostMapping("/portfolio")
     public Map<String, String> savePortfolio(@RequestBody PortfolioState incoming) {
-        Map<String, String> r = new HashMap<>();
+        List<String> invalid = structuralErrors(incoming);
+        if (!invalid.isEmpty()) {
+            return Map.of("status", "error", "message", String.join(" | ", invalid));
+        }
         portfolioService.updateState(state -> {
             if (incoming.budget > 0) state.budget = incoming.budget;
             if (incoming.advisorMode != null) state.advisorMode = incoming.advisorMode;
@@ -119,6 +130,7 @@ public class AdvisorController {
                 state.selectedIndex = incoming.selectedIndex.toUpperCase();
             if (incoming.positions != null) state.positions = new ArrayList<>(incoming.positions);
         });
+        Map<String, String> r = new HashMap<>();
         String validationError = portfolioService.validatePortfolio();
         if (validationError != null) {
             r.put("status", "warning");
@@ -127,6 +139,39 @@ public class AdvisorController {
             r.put("status", "ok");
         }
         return r;
+    }
+
+    /**
+     * Gelen portföy durumu için yapısal doğrulama yapar: sembol biçimi, pozitif lot,
+     * geçerli maliyet ve pozitif/sonlu sermaye. Uygulama tarafında {@code NaN}/{@code Infinity}
+     * üretebilecek verileri (ör. sıfır maliyet) engeller.
+     *
+     * @param incoming istek gövdesindeki portföy durumu
+     * @return hata mesajları; boşsa girdi geçerlidir
+     */
+    private List<String> structuralErrors(PortfolioState incoming) {
+        List<String> errors = new ArrayList<>();
+        if (!Double.isFinite(incoming.budget) || incoming.budget < 0) {
+            errors.add("Gecersiz butce: " + incoming.budget);
+        }
+        if (incoming.positions != null) {
+            for (Position p : incoming.positions) {
+                if (p == null || p.symbol() == null || p.symbol().isBlank()) {
+                    errors.add("Pozisyonda sembol eksik");
+                    continue;
+                }
+                if (!SYMBOL_PATTERN.matcher(p.symbol().trim().toUpperCase()).matches()) {
+                    errors.add("Gecersiz sembol: " + p.symbol());
+                }
+                if (p.lots() <= 0) {
+                    errors.add(p.symbol() + ": lot sayisi pozitif olmali (" + p.lots() + ")");
+                }
+                if (!(p.avgCost() > 0) || !Double.isFinite(p.avgCost())) {
+                    errors.add(p.symbol() + ": birim maliyet pozitif olmali (" + p.avgCost() + ")");
+                }
+            }
+        }
+        return errors;
     }
 
     /**

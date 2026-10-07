@@ -31,9 +31,9 @@ public class AdvisorCommands {
     }
 
     /**
-     * Portföyü ilklendirir: bütçe, yatırım modu, model türü ve başlangıç pozisyonlarını atar.
+     * Portföyü ilklendirir: toplam sermaye, yatırım modu, model türü ve başlangıç pozisyonlarını atar.
      *
-     * @param budget   toplam bütçe (TL)
+     * @param budget   toplam sermaye (TL) — nakit + pozisyonların maliyet tabanı
      * @param mode     yatırım modu etiketi (TEMKINLI/DENGELI/AGRESIF)
      * @param model    ML model anahtarı (random_forest/svm/knn)
      * @param positions başlangıç pozisyonları listesi
@@ -101,13 +101,14 @@ public class AdvisorCommands {
     }
 
     /**
-     * Portföyün mevcut durumunu konsola yazdırır (bütçe, mod, model, pozisyonlar).
+     * Portföyün mevcut durumunu konsola yazdırır (toplam sermaye, nakit, mod, model, pozisyonlar).
      */
     public void status() {
         PortfolioState s = portfolioService.getState();
-        System.out.println("Bütçe: " + s.budget + " TL");
+        double cash = portfolioService.availableCash(null);
+        System.out.println("Toplam Sermaye: " + s.budget + " TL | Nakit: " + cash + " TL");
         System.out.println("Mod: " + s.advisorMode + " | Model: " + s.modelType);
-        System.out.println("Pozisyonlar (" + s.positions.size() + "/5):");
+        System.out.println("Pozisyonlar (" + s.positions.size() + "/" + portfolioService.maxPositions() + "):");
         for (Position p : s.positions) {
             System.out.println("  " + p.symbol() + " " + p.lots() + " lot @ " + p.avgCost());
         }

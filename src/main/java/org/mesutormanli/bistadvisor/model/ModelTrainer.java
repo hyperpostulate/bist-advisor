@@ -116,8 +116,7 @@ public class ModelTrainer {
             for (int i = Math.max(0, end - windowSize); i < end; i++) {
                 List<Bar> window = bars.subList(0, i + 1);
                 FeatureVector fv = FeatureVector.fromBars(f, window);
-                fv.normalize();
-                rows.add(fv.toArray());
+                rows.add(fv.normalize().toArray());
                 labels.add(Labeler.labelFor(bars, horizon, i));
             }
         }
@@ -126,7 +125,30 @@ public class ModelTrainer {
         }
         double[][] x = rows.toArray(new double[0][]);
         int[] y = labels.stream().mapToInt(Integer::intValue).toArray();
+        logClassDistribution(y);
         return new TrainingSet(x, y);
+    }
+
+    /**
+     * Eğitim setindeki sınıf dağılımını loglar. Bir sınıf hiç oluşmamışsa uyarı basar;
+     * modeller bu sınıfı üretemez (ör. yatay piyasada SAT etiketi yoksa).
+     *
+     * @param y etiket dizisi
+     */
+    private void logClassDistribution(int[] y) {
+        int buy = 0, sell = 0, hold = 0;
+        for (int label : y) {
+            switch (label) {
+                case Labeler.BUY -> buy++;
+                case Labeler.SELL -> sell++;
+                default -> hold++;
+            }
+        }
+        log.info("Egitim seti: {} ornek (AL={}, SAT={}, TUT={})", y.length, buy, sell, hold);
+        if (buy == 0 || sell == 0 || hold == 0) {
+            log.warn("Egitim setinde bazi siniflar hic olusmadi (AL={}, SAT={}, TUT={}); "
+                    + "modeller eksik sinifi uretemez, esikler esneklesmeli", buy, sell, hold);
+        }
     }
 
     private record TrainingSet(double[][] features, int[] labels) {}
