@@ -1,5 +1,9 @@
 package org.mesutormanli.bistadvisor.advisor;
 
+import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.CandidateInput;
+import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.HoldingInput;
+import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.Plan;
+import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.Planned;
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import org.mesutormanli.bistadvisor.data.BistIndices;
@@ -9,27 +13,34 @@ import org.mesutormanli.bistadvisor.data.YahooClient.Fundamentals;
 import org.mesutormanli.bistadvisor.features.FeatureVector;
 import org.mesutormanli.bistadvisor.features.TechnicalFeatures;
 import org.mesutormanli.bistadvisor.features.TechnicalFeatures.Bar;
-import org.mesutormanli.bistadvisor.model.Labeler;
 import org.mesutormanli.bistadvisor.model.ModelStrategy;
 import org.mesutormanli.bistadvisor.model.ModelTrainer;
 import org.mesutormanli.bistadvisor.portfolio.PortfolioService;
 import org.mesutormanli.bistadvisor.portfolio.PortfolioState;
 import org.mesutormanli.bistadvisor.portfolio.Position;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * Günlük öneri orkestratörü: veri yükler, model tahminlerini üretir ve karar
+ * mantığını {@link AllocationPlanner}'a devreder.
+ * <p>
+ * Bir analiz turunda her sembol için fiyat serisi ve özellik vektörü <em>bir kez</em>
+ * hesaplanır; fiyat verisi alınamayan semboller için sahte fiyat üretilmez,
+ * "veri yok" bildirilir.
+ */
 @Service
 public class DailyAdvisor {
-    private static final Logger log = LoggerFactory.getLogger(DailyAdvisor.class);
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(DailyAdvisor.class);
 
     private final BistIndices bistIndices;
     private final YahooClient yahoo;
@@ -57,12 +68,12 @@ public class DailyAdvisor {
      * @param symbol hisse sembolü
      * @param action işlem türü (AL/SAT/TUT)
      * @param lots   lot miktarı
-     * @param price  güncel fiyat
-     * @param score  model güven skoru
+     * @param price  güncel fiyat ({@code null} = fiyat verisi yok)
+     * @param score  model güven skoru ({@code null} = tahmin yok)
      * @param note   açıklama notu
      */
     public record Recommendation(int index, String symbol, String action,
-                                 int lots, double price, double score, String note) {}
+                                 int lots, Double price, Double score, String note) {}
 
     /**
      * Günlük analiz sonucunu kapsüller.
@@ -72,11 +83,12 @@ public class DailyAdvisor {
      * @param availableCash  kullanılabilir nakit
      * @param positionCount  mevcut pozisyon sayısı
      * @param maxPositions   maksimum pozisyon limiti
-     * @param buySlots       doldurulabilecek pozisyon sayısı
+     * @param buySlots       doldurulabilecek <em>yeni</em> pozisyon sayısı
+     * @param warnings       kullanıcıya gösterilecek uyarılar (ör. veri yok)
      */
     public record AnalysisResult(List<Recommendation> holdings, List<Recommendation> buys,
                                  double availableCash, int positionCount,
-                                 int maxPositions, int buySlots) {}
+                                 int maxPositions, int buySlots, List<String> warnings) {}
 
     /**
      * Günlük portföy analizini çalıştırır:
@@ -95,77 +107,81 @@ public class DailyAdvisor {
         ModelStrategy model = modelTrainer.getOrTrain(modelType, state.selectedIndex);
 
         Map<String, List<Bar>> barsCache = new HashMap<>();
+        Map<String, double[]> featureCache = new HashMap<>();
         Map<String, Double> currentPrices = new LinkedHashMap<>();
-        List<Recommendation> holdings = new ArrayList<>();
-        int idx = 1;
 
+        List<HoldingInput> holdingInputs = new ArrayList<>();
         for (Position p : state.positions) {
             List<Bar> bars = loadSeriesCached(p.symbol(), barsCache);
-            double price = currentPrice(bars, p.avgCost());
-            currentPrices.put(p.symbol(), price);
-            double pnlPct = (price - p.avgCost()) / p.avgCost();
-            String action = "TUT";
-            String note = (pnlPct >= 0 ? "+" : "") + String.format("%.2f", pnlPct * 100) + "%";
-            double[] pred = model.predict(featuresFor(p.symbol(), bars));
-            double score = pred[1];
-            if (pnlPct <= -mode.stopLossPct || (pred[0] == Labeler.SELL && score >= mode.sellScoreThreshold)) {
-                action = "SAT";
-                note += " | skor=" + String.format("%.2f", score);
+            Double price = currentPrice(bars);
+            Double score = null;
+            Integer predClass = null;
+            if (price != null) {
+                currentPrices.put(p.symbol(), price);
+                double[] pred = model.predict(featuresCached(p.symbol(), bars, featureCache));
+                predClass = (int) pred[0];
+                score = pred[1];
             }
-            holdings.add(new Recommendation(idx++, p.symbol(), action, p.lots(), price, 0.0, note));
+            holdingInputs.add(new HoldingInput(p.symbol(), p.lots(), p.avgCost(),
+                    price, predClass, score));
         }
 
-        double cash = portfolioService.availableCash(currentPrices);
+        // Alım adayları: endeksteki diğer hisseler + mevcut pozisyonlara ekleme.
+        // Eleneleme (SAT çakışması, slot, eşik) AllocationPlanner'da yapılır.
+        Set<String> held = new HashSet<>();
+        for (Position p : state.positions) held.add(p.symbol());
+
+        List<CandidateInput> candidateInputs = new ArrayList<>();
+        for (String sym : bistIndices.symbolsOf(state.selectedIndex)) {
+            if (held.contains(sym)) continue;
+            List<Bar> bars = loadSeriesCached(sym, barsCache);
+            Double price = currentPrice(bars);
+            if (price == null) continue;
+            double[] pred = model.predict(featuresCached(sym, bars, featureCache));
+            candidateInputs.add(new CandidateInput(sym, price, pred[1], (int) pred[0], false));
+        }
+        for (Position p : state.positions) {
+            List<Bar> bars = loadSeriesCached(p.symbol(), barsCache);
+            Double price = currentPrice(bars);
+            if (price == null) continue;
+            double[] pred = model.predict(featuresCached(p.symbol(), bars, featureCache));
+            candidateInputs.add(new CandidateInput(p.symbol(), price, pred[1], (int) pred[0], true));
+        }
+
+        Plan plan = AllocationPlanner.plan(holdingInputs, candidateInputs,
+                mode, modelType, portfolioService.availableCash(), portfolioService.maxPositions());
+
+        int idx = 1;
+        List<Recommendation> holdings = new ArrayList<>();
+        for (Planned h : plan.holdings()) {
+            holdings.add(new Recommendation(idx++, h.symbol(), h.action(), h.lots(),
+                    h.price(), h.score(), h.note()));
+        }
         List<Recommendation> buys = new ArrayList<>();
-        long satCount = holdings.stream().filter(h -> "SAT".equals(h.action())).count();
-        int slotsForBuy = portfolioService.buySlotsAfter((int) satCount);
-        if (slotsForBuy > 0 || !state.positions.isEmpty()) {
-            record Candidate(String symbol, double price, double score) {}
-            List<Candidate> candidates = new ArrayList<>();
-
-            for (String sym : bistIndices.symbolsOf(state.selectedIndex)) {
-                if (currentPrices.containsKey(sym)) continue;
-                List<Bar> bars = loadSeriesCached(sym, barsCache);
-                double price = currentPrice(bars, 0.0);
-                if (price <= 0) continue;
-                double[] pred = model.predict(featuresFor(sym, bars));
-                double score = pred[1];
-                if (pred[0] == Labeler.BUY && score >= mode.buyThreshold) {
-                    candidates.add(new Candidate(sym, price, score));
-                }
-            }
-            for (Position p : state.positions) {
-                List<Bar> bars = loadSeriesCached(p.symbol(), barsCache);
-                double price = currentPrice(bars, p.avgCost());
-                double[] pred = model.predict(featuresFor(p.symbol(), bars));
-                double score = pred[1];
-                if (pred[0] == Labeler.BUY && score >= mode.buyThreshold) {
-                    candidates.add(new Candidate(p.symbol(), price, score));
-                }
-            }
-
-            candidates.sort(Comparator.comparingDouble(Candidate::score).reversed());
-            List<Candidate> top = candidates.size() <= slotsForBuy ? candidates : candidates.subList(0, slotsForBuy);
-
-            if (!top.isEmpty()) {
-                double totalBudget = cash * mode.riskPct;
-                double totalScore = top.stream().mapToDouble(c -> c.score).sum();
-                if (totalScore > 0) {
-                    for (Candidate c : top) {
-                        double alloc = totalBudget * (c.score / totalScore);
-                        int lots = (int) Math.floor(alloc / c.price);
-                        if (lots > 0) {
-                            buys.add(new Recommendation(idx++, c.symbol, "AL", lots, c.price, c.score,
-                                    "skor=" + String.format("%.2f", c.score)));
-                        }
-                    }
-                }
-            }
+        for (Planned b : plan.buys()) {
+            buys.add(new Recommendation(idx++, b.symbol(), b.action(), b.lots(),
+                    b.price(), b.score(), b.note()));
         }
 
         portfolioService.updateState(s -> s.lastRunDate = LocalDate.now().toString());
-        return new AnalysisResult(holdings, buys, cash, state.positions.size(),
-                portfolioService.maxPositions(), slotsForBuy);
+        return new AnalysisResult(holdings, buys, portfolioService.availableCash(),
+                state.positions.size(), portfolioService.maxPositions(),
+                plan.buySlots(), plan.warnings());
+    }
+
+    /**
+     * Portföydeki tüm pozisyonlar için güncel fiyatları harita olarak döndürür.
+     * Fiyat verisi alınamayan semboller haritada yer almaz ("veri yok" kabul edilir).
+     *
+     * @return sembol -> güncel fiyat eşlemesi (yalnızca fiyat bilinenler)
+     */
+    public Map<String, Double> currentPrices() {
+        Map<String, Double> prices = new LinkedHashMap<>();
+        for (Position p : portfolioService.getState().positions) {
+            Double price = currentPrice(loadSeries(p.symbol()));
+            if (price != null) prices.put(p.symbol(), price);
+        }
+        return prices;
     }
 
     /**
@@ -184,8 +200,7 @@ public class DailyAdvisor {
      * @return fiyat çubukları listesi
      */
     private List<Bar> loadSeries(String symbol) {
-        LocalDate today = LocalDate.now();
-        if (!cacheStore.hasFresh(symbol, today)) {
+        if (!cacheStore.hasFresh(symbol)) {
             List<Bar> fetched = yahoo.fetchPrices(symbol);
             if (!fetched.isEmpty()) {
                 cacheStore.writeLines(symbol, fetched.stream()
@@ -196,35 +211,26 @@ public class DailyAdvisor {
     }
 
     /**
-     * Fiyat serisinin son kapanış değerini döndürür. Seri boşsa {@code fallback} kullanılır.
+     * Fiyat serisinin son kapanış değerini döndürür. Seri boşsa (veri yoksa)
+     * {@code null} döner — sahte fiyat üretilmez.
      */
-    private double currentPrice(List<Bar> series, double fallback) {
-        return series.isEmpty() ? fallback : series.getLast().close();
+    private Double currentPrice(List<Bar> series) {
+        return series.isEmpty() ? null : series.getLast().close();
     }
 
     /**
-     * Bir hisse senedi için normalleştirilmiş öznitelik vektörünü hesaplar.
-     * Teknik göstergeleri ve temel verileri (F/K, PD/DD vb.) birleştirir.
+     * Bir hisse için normalize öznitelik vektörünü hesaplar ve tur içi önbelleğe alır;
+     * aynı sembol için hem holding hem aday döngülerinde tek hesaplama yapılır.
      *
-     * @param symbol hisse sembolü
-     * @param bars   fiyat çubukları serisi
+     * @param symbol      hisse sembolü
+     * @param bars        fiyat çubukları serisi
+     * @param featureCache tur içi özellik önbelleği
      * @return 11 boyutlu normalleştirilmiş öznitelik dizisi
      */
-    private double[] featuresFor(String symbol, List<Bar> bars) {
-        Fundamentals f = yahoo.fetchFundamentals(symbol);
-        return FeatureVector.fromBars(f, bars).normalize().toArray();
-    }
-
-    /**
-     * Portföydeki tüm pozisyonlar için güncel fiyatları harita olarak döndürür.
-     *
-     * @return sembol -> güncel fiyat eşlemesi
-     */
-    public Map<String, Double> currentPrices() {
-        Map<String, Double> prices = new LinkedHashMap<>();
-        for (Position p : portfolioService.getState().positions) {
-            prices.put(p.symbol(), currentPrice(loadSeries(p.symbol()), p.avgCost()));
-        }
-        return prices;
+    private double[] featuresCached(String symbol, List<Bar> bars, Map<String, double[]> featureCache) {
+        return featureCache.computeIfAbsent(symbol, s -> {
+            Fundamentals f = yahoo.fetchFundamentals(s);
+            return FeatureVector.fromBars(f, bars).normalize().toArray();
+        });
     }
 }

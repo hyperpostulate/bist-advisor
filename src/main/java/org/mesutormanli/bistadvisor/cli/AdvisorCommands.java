@@ -32,24 +32,26 @@ public class AdvisorCommands {
 
     /**
      * Portföyü ilklendirir: toplam sermaye, yatırım modu, model türü ve başlangıç pozisyonlarını atar.
+     * Nakit, sermayeden pozisyon maliyetleri düşülerek kurulur.
      *
-     * @param budget   toplam sermaye (TL) — nakit + pozisyonların maliyet tabanı
+     * @param budget   toplam sermaye katkısı (TL)
      * @param mode     yatırım modu etiketi (TEMKINLI/DENGELI/AGRESIF)
      * @param model    ML model anahtarı (random_forest/svm/knn)
      * @param positions başlangıç pozisyonları listesi
      */
     public void init(double budget, String mode, String model, List<Position> positions) {
-        PortfolioState state = portfolioService.getState();
-        state.budget = budget;
-        if (mode != null) state.advisorMode = AdvisorMode.fromLabel(mode).name();
-        if (model != null) state.modelType = ModelType.fromKey(model).name();
-        if (positions != null) state.positions = new ArrayList<>(positions);
+        String modeName = mode != null
+                ? AdvisorMode.fromLabel(mode).name() : portfolioService.advisorMode().name();
+        String modelName = model != null
+                ? ModelType.fromKey(model).name() : portfolioService.modelType().name();
+        portfolioService.initPortfolio(budget, modeName, modelName, positions);
         String validationError = portfolioService.validatePortfolio();
         if (validationError != null) {
             System.out.println("Uyari: " + validationError);
         }
-        portfolioService.save(state);
-        System.out.println("Portföy kaydedildi: bütçe=" + budget + ", mod=" + state.advisorMode + ", model=" + state.modelType);
+        System.out.println("Portföy kaydedildi: sermaye=" + budget + " TL, nakit="
+                + Math.round(portfolioService.availableCash()) + " TL, mod=" + modeName
+                + ", model=" + modelName);
     }
 
     /**
@@ -92,7 +94,6 @@ public class AdvisorCommands {
                 errors.add("Gecersiz sayi: " + a);
             }
         }
-        portfolioService.save(portfolioService.getState());
         System.out.println("İşlemler uygulandı: " + applied);
         if (!errors.isEmpty()) {
             System.out.println("Hatalar:");
@@ -105,8 +106,8 @@ public class AdvisorCommands {
      */
     public void status() {
         PortfolioState s = portfolioService.getState();
-        double cash = portfolioService.availableCash(null);
-        System.out.println("Toplam Sermaye: " + s.budget + " TL | Nakit: " + cash + " TL");
+        double cash = portfolioService.availableCash();
+        System.out.println("Sermaye: " + Math.round(s.budget) + " TL | Nakit: " + Math.round(cash) + " TL");
         System.out.println("Mod: " + s.advisorMode + " | Model: " + s.modelType);
         System.out.println("Pozisyonlar (" + s.positions.size() + "/" + portfolioService.maxPositions() + "):");
         for (Position p : s.positions) {
@@ -132,11 +133,19 @@ public class AdvisorCommands {
      */
     private void print(AnalysisResult r) {
         System.out.println("=== Günlük Öneri (" + r.positionCount() + "/5) | Nakit: " + Math.round(r.availableCash()) + " TL ===");
+        if (!r.warnings().isEmpty()) {
+            r.warnings().forEach(w -> System.out.println("! " + w));
+        }
         System.out.println("-- Mevcut Portföy --");
         java.util.Map<String, Position> posMap = new java.util.HashMap<>();
         for (Position p : portfolioService.getState().positions) posMap.put(p.symbol(), p);
         for (Recommendation x : r.holdings()) {
             Position p = posMap.get(x.symbol());
+            if (x.price() == null) {
+                System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot | "
+                        + x.action() + " | " + x.note());
+                continue;
+            }
             double pnlTl = p != null ? (x.price() - p.avgCost()) * x.lots() : 0;
             System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot | " + x.action()
                     + " | " + x.note() + " | " + String.format("%,.0f", pnlTl) + " TL");
@@ -144,7 +153,8 @@ public class AdvisorCommands {
         System.out.println("-- Al Önerileri --");
         if (r.buys().isEmpty()) System.out.println("(Al önerisi yok)");
         for (Recommendation x : r.buys()) {
-            System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot @ " + x.price() + " | skor=" + String.format("%.2f", x.score()));
+            System.out.println(x.index() + ") " + x.symbol() + " " + x.lots() + " lot @ "
+                    + String.format("%,.2f", x.price()) + " | skor=" + String.format("%.2f", x.score()));
         }
         System.out.println("* Yatırım tavsiyesi değildir.");
     }

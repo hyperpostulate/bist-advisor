@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code [0, 1]} aralığına ölçeklenmeli ve aşırı değerler kırpılmalı.
  * <p>
  * EĞİTİM/TAHMİN hat zincirleri {@code fv.normalize().toArray()} kalıbını kullanır;
- * dönüş değeri yok sayılırsa model ham ölçekte eğitilir (bkz. ANALYSIS.md BUG-02).
+ * dönüş değeri yok sayılırsa model ham ölçekte eğitilir.
  */
 class FeatureVectorTest {
 

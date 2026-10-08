@@ -134,6 +134,9 @@ const I18N = {
     txFailed: "başarısız",
     capital: "Sermaye",
     availableCash: "Kullanılabilir nakit",
+    equity: "Toplam Değer",
+    noData: "veri yok",
+    missingPrices: "Fiyat verisi alınamadı",
     position: "Pozisyon",
     holdingsTitle: "Mevcut Portföy (SAT önerileri önce)",
     buysTitle: "Al Önerileri",
@@ -196,6 +199,9 @@ const I18N = {
     txFailed: "failed",
     capital: "Capital",
     availableCash: "Available cash",
+    equity: "Total Value",
+    noData: "no data",
+    missingPrices: "Price data unavailable",
     position: "Position",
     holdingsTitle: "Current Portfolio (SELL first)",
     buysTitle: "Buy Recommendations",
@@ -350,6 +356,9 @@ async function post(u,b){
 
 function render(r) {
   let h = '<p class="small">' + t('availableCash') + ': ' + fmt(r.availableCash) + ' TL | ' + t('position') + ': ' + r.positionCount + '/' + r.maxPositions + '</p>';
+  if (r.warnings && r.warnings.length) {
+    h += '<p class="small" style="color:#fbc531">⚠ ' + r.warnings.join('<br>') + '</p>';
+  }
   r.holdings.sort((a, b) => a.symbol.localeCompare(b.symbol));
   h += '<h3 style="color:#9aa;font-size:13px">' + t('holdingsTitle') + '</h3><table><tr><th>' + t('colNo') + '</th><th>' + t('colSymbol') + '</th><th>' + t('colAction') + '</th><th>' + t('colLots') + '</th><th>' + t('colPrice') + '</th><th>' + t('colNote') + '</th></tr>';
   for (const x of r.holdings) h += row(x);
@@ -362,8 +371,9 @@ function render(r) {
 }
 function row(x){
   const cls = x.action==='AL'?'al':(x.action==='SAT'?'sat':'tut');
-  const sc = x.score?x.score.toFixed(2):'-';
-  return `<tr><td>${x.index}</td><td>${x.symbol}</td><td class="${cls}">${x.action}</td><td>${x.lots}</td><td>${fmt(x.price)}</td><td>${x.note||sc}</td></tr>`;
+  const sc = (x.score!=null && !Number.isNaN(x.score)) ? x.score.toFixed(2) : '-';
+  const price = (x.price==null) ? t('noData') : fmt(x.price);
+  return `<tr><td>${x.index}</td><td>${x.symbol}</td><td class="${cls}">${x.action}</td><td>${x.lots}</td><td>${price}</td><td>${x.note||sc}</td></tr>`;
 }
 function renderConfirm(r) {
   const items = [];
@@ -390,7 +400,18 @@ function renderConfirm(r) {
   h += '</table>';
   document.getElementById('confirmArea').innerHTML = h;
 }
-function fmt(n){ return (n==null?'0':n.toLocaleString(LANG==='en'?'en-US':'tr-TR',{maximumFractionDigits:2})); }
+function fmt(n){ return (n==null||Number.isNaN(n)) ? '—' : n.toLocaleString(LANG==='en'?'en-US':'tr-TR',{maximumFractionDigits:2}); }
+
+function pnlCell(v){
+  if (v==null||Number.isNaN(v)) return '<td>—</td>';
+  const cls = v >= 0 ? 'al' : 'sat';
+  return `<td class="${cls}">${fmt(v)}</td>`;
+}
+function pnlPctCell(v){
+  if (v==null||Number.isNaN(v)) return '<td>—</td>';
+  const cls = v >= 0 ? 'al' : 'sat';
+  return `<td class="${cls}">${(v >= 0 ? '+' : '') + (v * 100).toFixed(2)}%</td>`;
+}
 
 async function saveBudget() {
   const b = +document.getElementById('budget').value;
@@ -406,21 +427,25 @@ function renderPortfolio(v) {
   if (bInput && (bInput.value === '' || bInput.value == null)) bInput.value = v.budget;
   v.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
   let h = '<p class="small">' + t('capital') + ': ' + fmt(v.budget) + ' TL | ' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/' + 5 + '</p>';
+  h += '<p class="small">' + t('equity') + ': ' + fmt(v.equity) + ' TL</p>';
+  if (v.missingPrices && v.missingPrices.length) {
+    h += '<p class="small" style="color:#fbc531">⚠ ' + t('missingPrices') + ': ' + v.missingPrices.join(', ') + '</p>';
+  }
   if (v.positions.length === 0) {
     h += '<p class="small">' + t('noPositions') + '</p>';
   } else {
     h += '<table><tr><th>' + t('colSymbol') + '</th><th>' + t('colLots') + '</th><th>' + t('colUnitCost') + '</th><th>' + t('colTotalCost') + '</th><th>' + t('colCurrentPrice') + '</th><th>' + t('colCurrentTotal') + '</th><th>' + t('colPnlPct') + '</th><th>' + t('colPnlTl') + '</th><th></th></tr>';
     for (const p of v.positions) {
-      const pnlCls = p.pnlTl >= 0 ? 'al' : 'sat';
+      const noPrice = (p.currentPrice == null);
       h += `<tr>
         <td>${p.symbol}</td>
         <td>${p.lots}</td>
         <td>${fmt(p.avgCost)}</td>
         <td>${fmt(p.costTotal)}</td>
-        <td>${fmt(p.currentPrice)}</td>
+        <td>${noPrice ? t('noData') : fmt(p.currentPrice)}</td>
         <td>${fmt(p.currentTotal)}</td>
-        <td class="${pnlCls}">${(p.pnlPct >= 0 ? '+' : '') + (p.pnlPct * 100).toFixed(2)}%</td>
-        <td class="${pnlCls}">${fmt(p.pnlTl)}</td>
+        ${pnlPctCell(p.pnlPct)}
+        ${pnlCell(p.pnlTl)}
         <td><button style="background:#e84118;padding:4px 8px;font-size:12px" onclick="removePosition('${p.symbol}')">✕</button></td>
       </tr>`;
     }

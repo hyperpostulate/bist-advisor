@@ -17,7 +17,8 @@ import java.util.List;
  * Hisse senedi fiyat verilerini CSV dosyaları halinde diskte önbelleğe alır.
  * <p>
  * Her sembol için {@code price_SEMBOL.csv} formatında bir dosya tutulur.
- * Önbellek dizini {@code AppConfig.cacheDir()} ile belirlenir.
+ * Önbellek dizini {@code AppConfig.cacheDir()} ile belirlenir. Tazelik kontrolü
+ * {@link MarketTime} üzerinden, hafta sonu/tatil toleranslı bir pencereyle yapılır.
  */
 @Component
 public class CacheStore {
@@ -35,20 +36,27 @@ public class CacheStore {
     }
 
     /**
-     * Belirtilen hisse için önbellekte taze (bugünün tarihini içeren) veri olup
-     * olmadığını kontrol eder.
+     * Belirtilen hisse için önbellekte taze veri olup olmadığını kontrol eder.
+     * <p>
+     * Tazelik kuralı: son bar'ın tarihi
+     * {@link MarketTime#isFreshEnough(LocalDate)} ile "bugün − 4 gün" penceresi içindeyse
+     * veri tazedir. Böylece hafta sonu/resmi tatilde (o gün barı oluşmayacakken) tüm
+     * seriler gereksiz yere yeniden indirilmez.
      *
      * @param symbol hisse sembolü
-     * @param today  bugünün tarihi
      * @return {@code true} eğer önbellek tazeyse
      */
-    public boolean hasFresh(String symbol, LocalDate today) {
+    public boolean hasFresh(String symbol) {
         Path f = priceFile(symbol);
         if (!f.toFile().exists()) return false;
         try {
             List<String> lines = Files.readAllLines(f, StandardCharsets.UTF_8);
-            return !lines.isEmpty() && lines.getLast().startsWith(today.toString());
-        } catch (IOException e) {
+            if (lines.isEmpty()) return false;
+            String last = lines.getLast().trim();
+            int comma = last.indexOf(',');
+            String datePart = comma >= 0 ? last.substring(0, comma) : last;
+            return MarketTime.isFreshEnough(LocalDate.parse(datePart));
+        } catch (IOException | java.time.format.DateTimeParseException e) {
             return false;
         }
     }

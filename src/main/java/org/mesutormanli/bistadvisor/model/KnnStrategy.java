@@ -15,8 +15,9 @@ import smile.classification.KNN;
  */
 public final class KnnStrategy implements ModelStrategy {
 
-    /** Varsayılan komşu sayısı (5). */
-    private static final int DEFAULT_K = 5;
+    /** Varsayılan komşu sayısı (5). Skor eşiklerinin yuvarlanmasında da kullanılır
+     *  (bkz. {@code ScoreGate}). */
+    public static final int DEFAULT_K = 5;
 
     private KNN<double[]> model;
     private ClassSpace classes;

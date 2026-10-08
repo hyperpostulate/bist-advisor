@@ -8,37 +8,55 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Yahoo Finance API'den hisse senedi fiyat ve temel verilerini çeken HTTP istemcisi.
  * <p>
- * İsteklerde crumb-tabanlı kimlik doğrulama kullanır; 401 hatası durumunda crumb'ı
- * yeniler. 429 (rate-limit) ve 5xx hatalarında üstel geri çekilme (exponential backoff)
- * uygular.
+ * İsteklerde crumb-tabanlı kimlik doğrulama kullanılır; 401 hatası durumunda crumb
+ * yenilenir ve URL her denemede <em>yeniden kurulur</em>.
+ * 429 (rate-limit) ve 5xx hatalarında üstel geri çekilme (exponential backoff) uygulanır;
+ * tüm istekler {@code bist.scrape.delay-ms} ile throttling'e tabidir.
+ * Temel veriler günlük TTL ile bellekte önbelleklenir; böylece eğitim ve tahmin
+ * aynı sembol için veri çekimini tekrarlamaz.
  */
 @Component
 public class YahooClient {
     private static final Logger log = LoggerFactory.getLogger(YahooClient.class);
     private static final String UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     private static final String PRICE_URL = "https://query2.finance.yahoo.com/v8/finance/chart/%s?range=1y&interval=1d";
-    private static final String FUND_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=summaryDetail,defaultKeyStatistics,financialData,price&crumb=%s";
+    private static final String FUND_URL = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=summaryDetail,defaultKeyStatistics,financialData,price";
     private static final String CRUMB_URL = "https://query2.finance.yahoo.com/v1/test/getcrumb";
     private static final String COOKIE_URL = "https://fc.yahoo.com";
     private static final int MAX_RETRIES = 3;
 
+    /** İstekler arası minimum gecikme (ms) — {@code bist.scrape.delay-ms}. */
+    @org.springframework.beans.factory.annotation.Value("${bist.scrape.delay-ms:250}")
+    private long requestDelayMs = 250;
+
+    /** HTTP istek zaman aşımı (ms) — {@code bist.scrape.timeout-ms}. */
+    @org.springframework.beans.factory.annotation.Value("${bist.scrape.timeout-ms:15000}")
+    private long requestTimeoutMs = 15000;
+
     private final HttpClient http;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final Map<String, CachedFundamentals> fundCache = new ConcurrentHashMap<>();
     private volatile String crumb;
     private volatile String sessionCookie;
+
+    /** Günlük TTL ile önbelleklenen temel veri kaydı. */
+    private record CachedFundamentals(LocalDate day, Fundamentals fundamentals) {}
 
     /**
      * {@code YahooClient} HTTP istemcisini kurar. Bağlantı zaman aşımı 15 saniye
@@ -100,18 +118,25 @@ public class YahooClient {
     }
 
     /**
-     * Yahoo Finance'den temel verileri (F/K, PD/DD, temettü vb.) çeker.
+     * Yahoo Finance'den temel verileri (F/K, PD/DD, temettü vb.) çeker. Sonuç gün
+     * bazlı TTL ile önbelleklenir; aynı gün içinde ikinci istek ağa çıkmaz.
      *
      * @param symbol hisse sembolü
      * @return {@link Fundamentals} kaydı, hata durumunda {@link Fundamentals#EMPTY}
      */
     public Fundamentals fetchFundamentals(String symbol) {
+        String ysym = yahooSymbol(symbol);
+        LocalDate today = MarketTime.today();
+        CachedFundamentals hit = fundCache.get(ysym);
+        if (hit != null && hit.day().equals(today)) return hit.fundamentals();
         try {
             ensureCrumb();
-            String url = String.format(FUND_URL, yahooSymbol(symbol), crumb);
+            String url = String.format(FUND_URL, ysym);
             HttpResponse<String> res = get(url, true);
             if (res == null || res.statusCode() != 200) return Fundamentals.EMPTY;
-            return parseFundamentals(res.body());
+            Fundamentals f = parseFundamentals(res.body());
+            fundCache.put(ysym, new CachedFundamentals(today, f));
+            return f;
         } catch (Exception e) {
             log.warn("temel veri hatasi {}: {}", symbol, e.getMessage());
             return Fundamentals.EMPTY;
@@ -127,17 +152,32 @@ public class YahooClient {
      */
     private synchronized void ensureCrumb() throws Exception {
         if (crumb != null) return;
+        throttle();
         HttpResponse<Void> cr = http.send(HttpRequest.newBuilder()
-                .uri(URI.create(COOKIE_URL)).timeout(Duration.ofSeconds(15))
+                .uri(URI.create(COOKIE_URL)).timeout(Duration.ofMillis(requestTimeoutMs))
                 .header("User-Agent", UA).GET().build(), HttpResponse.BodyHandlers.discarding());
         sessionCookie = cookieString(cr.headers());
+        throttle();
         HttpResponse<String> rr = http.send(HttpRequest.newBuilder()
-                .uri(URI.create(CRUMB_URL)).timeout(Duration.ofSeconds(15))
+                .uri(URI.create(CRUMB_URL)).timeout(Duration.ofMillis(requestTimeoutMs))
                 .header("User-Agent", UA).header("Cookie", sessionCookie).GET().build(),
                 HttpResponse.BodyHandlers.ofString());
         if (rr.statusCode() != 200 || rr.body().isBlank())
             throw new IllegalStateException("crumb alinamadi: HTTP " + rr.statusCode());
         crumb = rr.body().trim();
+    }
+
+    /**
+     * İstekler arası throttle gecikmesi uygular ({@code bist.scrape.delay-ms});
+     * Yahoo rate-limit cezalarını (429) önlemeye yardım eder.
+     */
+    private void throttle() {
+        if (requestDelayMs <= 0) return;
+        try {
+            Thread.sleep(requestDelayMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
@@ -163,19 +203,27 @@ public class YahooClient {
     }
 
     /**
-     * HTTP GET isteği gönderir. 401 hatasında crumb yenilenir; 429 ve 5xx
+     * HTTP GET isteği gönderir. Crumb gerektiren isteklerde URL <strong>her denemede
+     * güncel crumb ile yeniden kurulur</strong>; 401 hatasında crumb/çerez yenilenir ve
+     * istek taze crumb'la tekrarlanır. 429 ve 5xx
      * hatalarında üstel geri çekilme (exponential backoff) uygulanır.
      *
-     * @param url       istek URL'si
-     * @param withCrumb crumb başlığı eklensin mi?
+     * @param url       istek URL'si (crumb parametresi hariç)
+     * @param withCrumb crumb parametresi eklensin mi?
      * @return HTTP yanıtı, maksimum deneme sonrası hata durumunda {@code null}
      * @throws Exception istek sırasında oluşan hata
      */
     private HttpResponse<String> get(String url, boolean withCrumb) throws Exception {
         long backoff = 500;
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            String finalUrl = url;
+            if (withCrumb) {
+                if (crumb == null) ensureCrumb();
+                finalUrl = url + "&crumb=" + URLEncoder.encode(crumb, StandardCharsets.UTF_8);
+            }
+            throttle();
             var builder = HttpRequest.newBuilder()
-                    .uri(URI.create(url)).timeout(Duration.ofSeconds(15))
+                    .uri(URI.create(finalUrl)).timeout(Duration.ofMillis(requestTimeoutMs))
                     .header("User-Agent", UA).header("Accept", "application/json");
             if (withCrumb && sessionCookie != null) builder.header("Cookie", sessionCookie);
             HttpRequest req = builder.GET().build();
@@ -183,7 +231,9 @@ public class YahooClient {
             int code = res.statusCode();
             if (code == 200) return res;
             if (code == 401 && withCrumb) {
-                synchronized (this) { crumb = null; sessionCookie = null; ensureCrumb(); }
+                // taze crumb alınsın; sonraki denemede URL yeniden kurulacak
+                crumb = null;
+                sessionCookie = null;
                 continue;
             }
             if (code == 429 || code >= 500) {
@@ -214,7 +264,7 @@ public class YahooClient {
             for (int i = 0; i < ts.size(); i++) {
                 if (closes.get(i) == null || closes.get(i).isNull()) continue;
                 LocalDate d = Instant.ofEpochSecond(ts.get(i).asLong())
-                        .atZone(ZoneId.of("Europe/Istanbul")).toLocalDate();
+                        .atZone(MarketTime.ZONE).toLocalDate();
                 double vol = i < vols.size() && vols.get(i) != null && !vols.get(i).isNull() ? vols.get(i).asDouble() : 0;
                 bars.add(new Bar(d.toString(), closes.get(i).asDouble(), vol));
             }

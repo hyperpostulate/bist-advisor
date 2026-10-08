@@ -16,10 +16,17 @@ import java.util.List;
 public class PortfolioState {
 
     /**
-     * Toplam sermaye (TL): nakit + pozisyonların maliyet tabanı. Kullanılabilir nakit
-     * bu alandan türetilir (bkz. {@code PortfolioService}).
+     * Toplam sermaye katkısı (TL): kullanıcının portföye koyduğu para. Alım/satım
+     * işlemleri bu alanı değiştirmez; kullanıcı para yatırma/çekme yaptığında
+     * güncellenir.
      */
     public double budget = 0.0;
+
+    /**
+     * Kullanılabilir nakit (TL). Alımda azalır (lot × alış fiyatı), satımda artar
+     * (lot × satış fiyatı) — gerçekleşen kâr/zarar bu şekilde nakde yansır.
+     */
+    public double cash = 0.0;
 
     /** Yatırım modu (enum adı olarak saklanır) */
     public String advisorMode = AdvisorMode.BALANCED.name();

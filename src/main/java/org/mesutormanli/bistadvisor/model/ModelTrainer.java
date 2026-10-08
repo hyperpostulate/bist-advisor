@@ -13,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -160,8 +159,7 @@ public class ModelTrainer {
      * @return fiyat çubukları listesi
      */
     private List<Bar> loadSeries(String symbol) {
-        LocalDate today = LocalDate.now();
-        if (!cacheStore.hasFresh(symbol, today)) {
+        if (!cacheStore.hasFresh(symbol)) {
             List<Bar> fetched = yahoo.fetchPrices(symbol);
             if (!fetched.isEmpty()) {
                 cacheStore.writeLines(symbol, fetched.stream()

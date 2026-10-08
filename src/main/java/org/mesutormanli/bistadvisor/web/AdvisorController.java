@@ -77,6 +77,9 @@ public class AdvisorController {
     /**
      * Portföyün görselleştirme için zenginleştirilmiş görünümünü döndürür:
      * her pozisyon için güncel fiyat, kâr/zarar bilgileri ve toplam değerler.
+     * Fiyat verisi alınamayan pozisyonlarda {@code currentPrice}/{@code pnlPct}/
+     * {@code pnlTl} alanları {@code null} döner (sahte fiyat üretilmez) ve sembol
+     * {@code missingPrices} listesinde yer alır.
      *
      * @return portföy görünüm haritası
      */
@@ -86,31 +89,52 @@ public class AdvisorController {
         Map<String, Double> prices = dailyAdvisor.currentPrices();
         double totalInvested = 0, totalCurrent = 0;
         var rows = new ArrayList<Map<String, Object>>();
+        var missingPrices = new ArrayList<String>();
         for (Position p : s.positions) {
-            double cur = prices.getOrDefault(p.symbol(), p.avgCost());
+            Double cur = prices.get(p.symbol());
+            if (cur == null) missingPrices.add(p.symbol());
             double costTotal = p.lots() * p.avgCost();
-            double curTotal = p.lots() * cur;
             totalInvested += costTotal;
-            totalCurrent += curTotal;
-            double pnlPct = p.avgCost() > 0 ? (cur - p.avgCost()) / p.avgCost() : 0.0;
-            rows.add(Map.of(
-                    "symbol", p.symbol(), "lots", p.lots(), "avgCost", p.avgCost(),
-                    "costTotal", costTotal, "currentPrice", cur, "currentTotal", curTotal,
-                    "pnlPct", pnlPct, "pnlTl", curTotal - costTotal
-            ));
+            Map<String, Object> row = new HashMap<>();
+            row.put("symbol", p.symbol());
+            row.put("lots", p.lots());
+            row.put("avgCost", p.avgCost());
+            row.put("costTotal", costTotal);
+            row.put("currentPrice", cur);
+            if (cur != null) {
+                double curTotal = p.lots() * cur;
+                totalCurrent += curTotal;
+                row.put("currentTotal", curTotal);
+                row.put("pnlPct", p.avgCost() > 0 ? (cur - p.avgCost()) / p.avgCost() : 0.0);
+                row.put("pnlTl", curTotal - costTotal);
+            } else {
+                row.put("currentTotal", null);
+                row.put("pnlPct", null);
+                row.put("pnlTl", null);
+            }
+            rows.add(row);
         }
-        return Map.of(
-                "budget", s.budget, "advisorMode", s.advisorMode, "modelType", s.modelType,
-                "positions", rows, "availableCash", portfolioService.availableCash(prices),
-                "totalInvested", totalInvested, "totalCurrent", totalCurrent
-        );
+        double cash = portfolioService.availableCash();
+        Map<String, Object> out = new HashMap<>();
+        out.put("budget", s.budget);
+        out.put("advisorMode", s.advisorMode);
+        out.put("modelType", s.modelType);
+        out.put("positions", rows);
+        out.put("availableCash", cash);
+        out.put("totalInvested", totalInvested);
+        out.put("totalCurrent", totalCurrent);
+        out.put("equity", cash + totalCurrent);
+        out.put("missingPrices", missingPrices);
+        return out;
     }
 
     /**
      * Portföy durumunu günceller (toplam sermaye, mod, model, endeks, pozisyonlar).
      * Gelen veri yapısal olarak geçersizse hiçbir şey yazılmaz ve
-     * {@code {"status":"error"}} döndürülür. İhmal edilebilir iş kuralları ihlalinde
-     * (ör. maliyetin sermâyeyi aşması) kayıt yapılır ve {@code {"status":"warning"}}
+     * {@code {"status":"error"}} döndürülür. Nakit, güncellemeyle mutabakata geçirilir:
+     * sermaye farkı para yatırma/çekme, pozisyon farkı ise maliyet kadar nakit hareketi
+     * sayılır (bkz. {@code PortfolioService.updatePortfolio}). İhmal edilebilir iş kuralları
+     * ihlalinde (ör. negatif nakit) kayıt yapılır ve {@code {"status":"warning"}}
      * döndürülür.
      *
      * @param incoming yeni portföy durumu
@@ -122,14 +146,16 @@ public class AdvisorController {
         if (!invalid.isEmpty()) {
             return Map.of("status", "error", "message", String.join(" | ", invalid));
         }
-        portfolioService.updateState(state -> {
-            if (incoming.budget > 0) state.budget = incoming.budget;
-            if (incoming.advisorMode != null) state.advisorMode = incoming.advisorMode;
-            if (incoming.modelType != null) state.modelType = incoming.modelType;
-            if (incoming.selectedIndex != null && bistIndices.containsIndex(incoming.selectedIndex))
-                state.selectedIndex = incoming.selectedIndex.toUpperCase();
-            if (incoming.positions != null) state.positions = new ArrayList<>(incoming.positions);
-        });
+        String indexName = null;
+        if (incoming.selectedIndex != null && bistIndices.containsIndex(incoming.selectedIndex)) {
+            indexName = incoming.selectedIndex.toUpperCase();
+        }
+        portfolioService.updatePortfolio(
+                incoming.budget,
+                incoming.advisorMode,
+                incoming.modelType,
+                indexName,
+                incoming.positions);
         Map<String, String> r = new HashMap<>();
         String validationError = portfolioService.validatePortfolio();
         if (validationError != null) {
@@ -193,7 +219,8 @@ public class AdvisorController {
     public record ConfirmReq(String symbol, String action, int lots, double price) {}
 
     /**
-     * Bir liste onaylanmış işlemi portföye uygular.
+     * Bir liste onaylanmış işlemi portföye uygular. Her işlem anında diske yazılır;
+     * gerçekleşen kâr/zarar nakde yansır.
      *
      * @param reqs onaylanmış işlem listesi
      * @return işlem sonucu (uygulanan/başarısız sayıları)
@@ -209,7 +236,6 @@ public class AdvisorController {
                 failed++;
             }
         }
-        portfolioService.save(portfolioService.getState());
         Map<String, String> res = new HashMap<>();
         res.put("status", "ok");
         res.put("applied", String.valueOf(applied));
@@ -248,6 +274,7 @@ public class AdvisorController {
         m.put("action", r.action());
         m.put("lots", r.lots());
         m.put("price", r.price());
+        m.put("score", r.score());
         m.put("note", r.note());
         return m;
     }

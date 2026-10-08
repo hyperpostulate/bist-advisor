@@ -11,24 +11,23 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 
 /**
  * Portföy durumunu yöneten servis.
  * <p>
- * <strong>Bütçe modeli:</strong> {@code state.budget} alanı <em>toplam sermayedir</em>
- * (nakit + pozisyonların maliyet tabanı). Kullanılabilir nakit bu alandan türetilir:
- * {@code nakit = bütçe - Σ (lot × ortalama maliyet)}. Böylece bütçe/nakit arasında çift
- * kayıt (double bookkeeping) yapılmaz; alım satımlar sermayeyi değiştirmez, yalnızca
- * nakit ile maliyet tabanı arasındaki dağılımı değiştirir.
+ * <strong>Nakit modeli:</strong> {@code state.cash} alanında <em>açık nakit</em>, {@code state.budget}
+ * alanında <em>toplam sermaye katkısı</em> tutulur. Alım/satım işlemleri nakdi doğrudan
+ * değiştirir: alımda {@code nakit -= lot × alış fiyatı}, satımda
+ * {@code nakit += lot × satış fiyatı}. Böylece <strong>gerçekleşen kâr/zarar nakde yansır</strong>:
+ * kârlı satış kullanıcıyı zenginleştirir, zararlı satış fakirleştirir.
+ * Toplam değer (equity) = {@code nakit + Σ lot × güncel fiyat}.
  * <p>
- * Portföy verileri YAML formatında diskte saklanır ({@code state.yaml}). Bütçe kontrolü,
+ * Portföy verileri YAML formatında diskte saklanır ({@code state.yaml}). Nakit kontrolü,
  * pozisyon ekleme/çıkarma, kısmi satış, validasyon ve maksimum pozisyon limiti (5) gibi
- * işlemleri sağlar. Tüm işlemler thread-safe'tir.
- * <p>
- * <strong>Göç (migration):</strong> Eski sürümlerde {@code budget} alanı "kalan nakit"
- * olarak tutuluyordu. Yüklenirken bu kural ihlal ediliyorsa (maliyet > bütçe) alan otomatik
- * olarak toplam sermayeye yükseltilir ve loglanır.
+ * işlemleri sağlar. Tüm işlemler thread-safe'tir ve başarılı işlemler anında diske yazılır.
  */
 @Service
 public class PortfolioService {
@@ -43,8 +42,8 @@ public class PortfolioService {
     private PortfolioState state;
 
     /**
-     * {@code PortfolioService} servisini kurar. YAML mapper'ı yapılandırır
-     * ve mevcut state dosyasını yükler.
+     * {@code PortfolioService} servisini kurar. YAML mapper'ı yapılandırır ve
+     * mevcut state dosyasını yükler.
      *
      * @param appConfig uygulama yapılandırması
      */
@@ -64,11 +63,12 @@ public class PortfolioService {
     public synchronized PortfolioState getState() {
         PortfolioState copy = new PortfolioState();
         copy.budget = state.budget;
+        copy.cash = state.cash;
         copy.advisorMode = state.advisorMode;
         copy.modelType = state.modelType;
         copy.selectedIndex = state.selectedIndex;
         copy.lastRunDate = state.lastRunDate;
-        copy.positions = new java.util.ArrayList<>();
+        copy.positions = new ArrayList<>();
         if (state.positions != null) {
             for (Position p : state.positions) {
                 copy.positions.add(new Position(p.symbol(), p.lots(), p.avgCost()));
@@ -78,26 +78,12 @@ public class PortfolioService {
     }
 
     /**
-     * Portföy durumunu günceller ve diske yazar.
+     * Kullanılabilir nakit (TL) döndürür.
      *
-     * @param newState yeni portföy durumu
+     * @return açık nakit bakiyesi
      */
-    public synchronized void save(PortfolioState newState) {
-        this.state = newState;
-        sortPositions();
-        write();
-    }
-
-    /**
-     * Kullanılabilir nakit miktarını döndürür: toplam sermayeden pozisyonların maliyet
-     * tabanı düşülerek hesaplanır ve negatif olamaz.
-     *
-     * @param currentPrices güncel fiyatlar (nakit mutabakatında kullanılmaz; arayüz/API
-     *                      sözleşmesiyle uyum için parametre korunur)
-     * @return kullanılabilir nakit (TL)
-     */
-    public synchronized double availableCash(java.util.Map<String, Double> currentPrices) {
-        return Math.max(0.0, state.budget - investedCost());
+    public synchronized double availableCash() {
+        return state.cash;
     }
 
     /**
@@ -135,7 +121,7 @@ public class PortfolioService {
     public synchronized int maxPositions() { return MAX_POSITIONS; }
 
     /**
-     * Satış işlemlerinden sonra doldurulabilecek pozisyon sayısını hesaplar.
+     * Satış işlemlerinden sonra doldurulabilecek <em>yeni</em> pozisyon sayısını hesaplar.
      *
      * @param sellCount yapılacak satış sayısı
      * @return kalan pozisyon slot sayısı (0-5 arası)
@@ -161,6 +147,7 @@ public class PortfolioService {
 
     /**
      * Portföy durumuna atomik bir güncelleme uygular ve sonucu diske yazar.
+     * Nakit muhasebesi yapılmaz — yalnızca alan düzeyinde ince ayarlar içindir.
      *
      * @param fn durumu değiştiren consumer fonksiyonu
      */
@@ -171,13 +158,71 @@ public class PortfolioService {
     }
 
     /**
-     * Bir alım veya satım işlemini portföye uygular.
+     * Portföyü sıfırdan ilkilendirir: sermaye, mod, model ve başlangıç pozisyonlarını
+     * atar; nakdi {@code nakit = sermaye − Σ pozisyon maliyeti} olarak kurar.
+     *
+     * @param budget      toplam sermaye katkısı (TL)
+     * @param advisorMode mod adı ({@code null} ise mevcut korunur)
+     * @param modelType   model adı ({@code null} ise mevcut korunur)
+     * @param positions   başlangıç pozisyonları ({@code null} ise boş)
+     */
+    public synchronized void initPortfolio(double budget, String advisorMode,
+                                           String modelType, List<Position> positions) {
+        state.budget = budget;
+        if (advisorMode != null) state.advisorMode = advisorMode;
+        if (modelType != null) state.modelType = modelType;
+        state.positions = positions != null ? new ArrayList<>(positions) : new ArrayList<>();
+        sortPositions();
+        state.cash = budget - investedCost();
+        write();
+    }
+
+    /**
+     * Manuel portföy güncellemesini uygular ve nakdi mutabakata geçirir:
      * <ul>
-     *   <li>AL: pozisyonu ekler veya mevcut pozisyonu büyütür (sermaye yeterli olmalı)</li>
-     *   <li>SAT: kısmi satışta pozisyonu küçültür, tam satışta kaldırır</li>
+     *   <li>Sermaye farkı para yatırma/çekme sayılır: {@code nakit += Δsermaye};</li>
+     *   <li>Pozisyon değişikliği (ekleme/silme/düzeltme) maliyet farkı kadar nakdi
+     *       kaydırır: {@code nakit += eski maliyet − yeni maliyet}. Pozisyon silme böylece
+     *       maliyet bedeliyle satılmış gibi nakde döner; gerçekleşen kâr/zarar için
+     *       işlem onayı ({@link #applyTransaction}) kullanılmalıdır.</li>
      * </ul>
-     * İşlemler toplam sermayeyi ({@code budget}) değiştirmez; nakit
-     * ({@link #availableCash}) pozisyonların maliyet tabanından türetilir.
+     * Bu kurallar {@code nakit + maliyet = sermaye} değişmezini (gerçekleşen PnL hariç)
+     * korur.
+     *
+     * @param budget      yeni sermaye ({@code <= 0} ise değişmez)
+     * @param advisorMode mod adı ({@code null} ise değişmez)
+     * @param modelType   model adı ({@code null} ise değişmez)
+     * @param indexName   endeks adı ({@code null} ise değişmez)
+     * @param positions   yeni pozisyon listesi ({@code null} ise değişmez)
+     */
+    public synchronized void updatePortfolio(double budget, String advisorMode, String modelType,
+                                             String indexName, List<Position> positions) {
+        double cash = state.cash;
+        if (budget > 0 && Math.abs(budget - state.budget) > TOLERANCE) {
+            cash += budget - state.budget;
+            state.budget = budget;
+        }
+        if (positions != null) {
+            double oldInvested = investedCost();
+            state.positions = new ArrayList<>(positions);
+            sortPositions();
+            cash += oldInvested - investedCost();
+        }
+        if (advisorMode != null) state.advisorMode = advisorMode;
+        if (modelType != null) state.modelType = modelType;
+        if (indexName != null) state.selectedIndex = indexName;
+        state.cash = cash;
+        write();
+    }
+
+    /**
+     * Bir alım veya satım işlemini portföye uygular ve sonucu anında diske yazar.
+     * <ul>
+     *   <li><strong>AL:</strong> {@code nakit -= lot × fiyat}; pozisyon eklenir veya
+     *       mevcut pozisyon büyütülür (nakit yeterli olmalı)</li>
+     *   <li><strong>SAT:</strong> {@code nakit += lot × fiyat}; kısmi satışta pozisyon
+     *       küçülür, tam satışta kaldırır. Gerçekleşen kâr/zarar nakde yansır.</li>
+     * </ul>
      *
      * @param symbol hisse sembolü
      * @param action işlem türü (AL veya SAT)
@@ -198,13 +243,13 @@ public class PortfolioService {
             log.warn("applyTransaction: fiyat pozitif olmali ({}), islem atlandi", price);
             return false;
         }
-        if (state.positions == null) state.positions = new java.util.ArrayList<>();
+        if (state.positions == null) state.positions = new ArrayList<>();
 
         String sym = symbol.trim().toUpperCase();
+        double cash = state.cash;
 
         if ("AL".equalsIgnoreCase(action.trim())) {
             double cost = lots * price;
-            double cash = availableCash(null);
             if (cost > cash + TOLERANCE) {
                 log.warn("applyTransaction: yetersiz nakit (ihtiyac={}, nakit={})", cost, cash);
                 return false;
@@ -225,7 +270,9 @@ public class PortfolioService {
                 }
                 state.positions.add(new Position(sym, lots, price));
             }
+            state.cash = cash - cost;
             sortPositions();
+            write();
             return true;
         } else if ("SAT".equalsIgnoreCase(action.trim())) {
             var idx = -1;
@@ -247,7 +294,9 @@ public class PortfolioService {
             } else {
                 state.positions.set(idx, new Position(sym, old.lots() - lots, old.avgCost()));
             }
+            state.cash = cash + lots * price;
             sortPositions();
+            write();
             return true;
         } else {
             log.warn("applyTransaction: gecersiz islem ({})", action);
@@ -256,18 +305,16 @@ public class PortfolioService {
     }
 
     /**
-     * Portföyün bütçe kısıtına uygunluğunu doğrular: toplam pozisyon maliyeti
-     * toplam sermayeyi ({@code budget}) aşmamalı ve pozisyon sayısı limiti
-     * ({@value #MAX_POSITIONS}) aşılmamalıdır.
+     * Portföyün nakit ve pozisyon kısıtlarına uygunluğunu doğrular: nakit negatif
+     * olmamalı ve pozisyon sayısı limiti ({@value #MAX_POSITIONS}) aşılmamalıdır.
      *
      * @return uyarı mesajı veya {@code null} (sorun yoksa)
      */
     public synchronized String validatePortfolio() {
-        java.util.List<String> errors = new java.util.ArrayList<>();
-        double invested = investedCost();
-        if (invested > state.budget + TOLERANCE) {
-            errors.add("Pozisyon maliyeti (" + fmt(invested) + ") toplam sermayeyi ("
-                    + fmt(state.budget) + ") asiyor");
+        List<String> errors = new ArrayList<>();
+        double cash = state.cash;
+        if (cash < -TOLERANCE) {
+            errors.add("Negatif nakit (" + fmt(cash) + " TL)");
         }
         if (state.positions != null && state.positions.size() > MAX_POSITIONS) {
             errors.add("Pozisyon sayisi (" + state.positions.size() + ") siniri ("
@@ -287,32 +334,28 @@ public class PortfolioService {
     }
 
     /**
-     * State dosyasını YAML'dan okur. Dosya yoksa veya okuma hatası olursa
-     * boş bir {@link PortfolioState} döndürür. Eski sürüm "bütçe = kalan nakit"
-     * anlamındaki dosyalar toplam sermayeye yükseltilir (bkz. sınıf javadoc'u).
+     * State dosyasını YAML'dan okur. Dosya yoksa veya okuma hatası olursa boş bir
+     * {@link PortfolioState} döndürür.
      *
-     * @return yüklenmiş (gerekirse düzeltilmiş) portföy durumu
+     * @return yüklenmiş portföy durumu
      */
     private PortfolioState load() {
         File f = new File(appConfig.stateFile());
-        if (!f.exists()) return new PortfolioState();
-        try {
-            PortfolioState s = yamlMapper.readValue(f, PortfolioState.class);
-            if (s.positions != null) {
-                s.positions.sort(Comparator.comparing(Position::symbol));
+        PortfolioState s;
+        if (!f.exists()) {
+            s = new PortfolioState();
+        } else {
+            try {
+                s = yamlMapper.readValue(f, PortfolioState.class);
+            } catch (IOException e) {
+                log.warn("state.yaml okunamadi, bos baslatiliyor: {}", e.getMessage());
+                s = new PortfolioState();
             }
-            double invested = investedCost(s);
-            if (invested > s.budget + TOLERANCE) {
-                double fixed = s.budget + invested;
-                log.warn("state.yaml eski butce semantigiyle bulundu; toplam sermaye {} -> {} "
-                        + "olarak duzeltildi (pozisyon maliyeti={})", s.budget, fixed, invested);
-                s.budget = fixed;
-            }
-            return s;
-        } catch (IOException e) {
-            log.warn("state.yaml okunamadi, bos baslatiliyor: {}", e.getMessage());
-            return new PortfolioState();
         }
+        if (s.positions != null) {
+            s.positions.sort(Comparator.comparing(Position::symbol));
+        }
+        return s;
     }
 
     /**

@@ -100,7 +100,9 @@ GitHub Actions iş akışı (`.github/workflows/`):
 ```
 org.mesutormanli.bistadvisor
 ├── advisor/
-│   └── DailyAdvisor.java                  # Günlük öneri motoru
+│   ├── AllocationPlanner.java             # Saf karar motoru (SAT/AL tutarlılığı, slot + bütçe dağıtımı)
+│   ├── DailyAdvisor.java                  # Günlük öneri orkestratörü (veri + model + planlayıcı)
+│   └── ScoreGate.java                     # Model türüne göre yorumlanmış skor eşikleri
 ├── cli/
 │   └── AdvisorCommands.java               # CLI komutları (init/run/confirm/status/train)
 ├── config/
@@ -109,8 +111,9 @@ org.mesutormanli.bistadvisor
 │   └── ModelType.java                     # ML model tipi enum (RANDOM_FOREST/SVM/KNN)
 ├── data/
 │   ├── BistIndices.java                   # BIST endeks-hisse eşleştirme (.properties)
-│   ├── CacheStore.java                    # Fiyat serisi önbelleği (CSV dosya)
-│   └── YahooClient.java                   # Yahoo Finance OHLCV + temel veri çekici
+│   ├── CacheStore.java                    # Fiyat serisi önbelleği (CSV dosya, tazeleme pencereli)
+│   ├── MarketTime.java                    # Ortak piyasa saat dilimi + tazelik penceresi
+│   └── YahooClient.java                   # Yahoo Finance OHLCV + temel veri çekici (crumb, throttle, TTL önbellek)
 ├── features/
 │   ├── FeatureVector.java                 # 11 boyutlu özellik vektörü
 │   └── TechnicalFeatures.java             # Teknik göstergeler (RSI/SMA/MACD/volatilite)
@@ -126,7 +129,7 @@ org.mesutormanli.bistadvisor
 │   └── SvmStrategy.java                   # SVM one-vs-rest (SMILE Gaussian kernel)
 ├── portfolio/
 │   ├── PortfolioService.java              # Portföy servisi (state.yaml kalıcılık)
-│   ├── PortfolioState.java                # Portföy durumu (bütçe/mod/model/pozisyonlar)
+│   ├── PortfolioState.java                # Portföy durumu (sermaye/nakit/mod/model/pozisyonlar)
 │   └── Position.java                      # Pozisyon modeli (sembol/lot/maliyet)
 ├── web/
 │   ├── AdvisorController.java             # REST API kontrolcüsü (/api/*)
@@ -138,12 +141,15 @@ org.mesutormanli.bistadvisor
 
 | Bileşen | Açıklama |
 |---------|----------|
-| `DailyAdvisor` | Portföy ve ML modelini birleştirerek günlük AL/SAT/TUT önerileri üretir |
+| `DailyAdvisor` | Veri yükler, model tahminlerini üretir ve karar mantığını `AllocationPlanner`'a devreder; sembol başına tek özellik hesabı |
+| `AllocationPlanner` | Saf karar motoru: SAT/TUT + AL listesi, slot/bütçe dağıtımı (birim teste alınabilir) |
+| `ScoreGate` | Model türüne göre eşik yorumu (KNN'de oy ızgarasına yuvarlama) |
 | `AdvisorCommands` | CLI komut arayüzü: `init`, `run`, `confirm`, `status`, `train` |
 | `AdvisorMode` | 3 yatırım modu: TEMKİNLİ (%25 risk), DENGELİ (%50), AGRESİF (%75) |
-| `YahooClient` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker |
+| `YahooClient` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker; crumb'ı her denemede yeniler, istekleri throttle eder, temel veriyi günlük TTL ile önbellekler |
 | `BistIndices` | BIST-30/50/100 ve sektör endekslerini sembol listeleriyle tanımlar |
 | `CacheStore` | Fiyat serilerini `cache/` dizininde CSV olarak önbelleğe alır |
+| `MarketTime` | Tek piyasa saat dilimi (`Europe/Istanbul`) + hafta sonu/tatil toleranslı tazelik penceresi |
 | `FeatureVector` | 11 özellik: RSI, SMA-20/50 oranı, MACD, volatilite, hacim, F/K, PD/DD, temettü, büyüme, ROE |
 | `ModelStrategy` | ML model arayüzü: `train(features, labels)`, `predict(features)` → {sınıf, skor} |
 | `ClassSpace` | Sınıf-etiket eşlemesi: eksik sınıflarda güvenli tahmin (olasılık dizisi boyutu tuzağını önler) |
@@ -152,26 +158,32 @@ org.mesutormanli.bistadvisor
 | `KnnStrategy` | k-NN sınıflandırıcı (k=5) |
 | `Labeler` | N günlük getiriye göre etiketleme: >%5 → AL, <-%5 → SAT, arada → TUT |
 | `ModelTrainer` | Canlı veriyle eğitim, HashMap ile bellek-içi önbellek |
-| `PortfolioService` | state.yaml okuma/yazma, bütçe-nakit mutabakatı (bütçe = toplam sermaye, nakit türetilir), kısmi satış, portföy kısıtları (maks 5 pozisyon) |
+| `PortfolioService` | state.yaml okuma/yazma, açık nakit muhasebesi (gerçekleşen kâr/zarar nakde yansır), kısmi satış, portföy kısıtları (maks 5 pozisyon) |
 | `AdvisorController` | REST API: portföy okuma/güncelleme, analiz, işlem onayı, konfigürasyon |
-| `BistAdvisorApplication` | Web modu (args yok) veya CLI modu (args var) |
+| `BistAdvisorApplication` | Web modu (varsayılan) veya CLI modu (`--cli` / bilinen komut adı) |
 
 ### Bütçe ve Nakit Modeli
 
-`budget` alanı **toplam sermayedir** (nakit + pozisyonların maliyet tabanı). Kullanılabilir nakit otomatik türetilir:
+`budget` alanı **toplam sermaye katkısıdır** (kullanıcının koyduğu para), `cash` alanı ise **açık nakit**. Alım/satım işlemleri nakdi doğrudan değiştirir:
 
 ```
-nakit = bütçe − Σ (lot × ortalama maliyet)
+alım:  nakit −= lot × alış fiyatı
+satım: nakit += lot × satış fiyatı
+toplam değer (equity) = nakit + Σ (lot × güncel fiyat)
 ```
 
-Alım/satım işlemleri toplam sermayeyi değiştirmez; yalnızca nakit ile maliyet tabanı arasındaki dağılımı değiştirir. Kısmi satış desteklenir: satılan lot kadar pozisyon küçülür, ortalama maliyet korunur. Eski sürümlerde `budget` alanına "kalan nakit" yazılmış `state.yaml` dosyaları ilk yüklemede otomatik olarak toplam sermayeye yükseltilir ve loglanır.
+Bu modelde **gerçekleşen kâr/zarar nakde yansır**: 240 TL'den alıp 250 TL'den satmak 1.000 TL kârı serbest nakde ekler; zararlı satış nakdi azaltır. Kısmi satış desteklenir: satılan lot kadar pozisyon küçülür, ortalama maliyet korunur.
+
+Manuel portföy güncellemeleri (arayüzden pozisyon ekleme/silme) nakdi maliyet farkı kadar kaydırır; pozisyon silme maliyet bedeliyle satılmış gibi nakde döner — gerçekleşen kâr/zarar için işlem onayını kullanın. Bütçe alanının değiştirilmesi para yatırma/çekme sayılır.
+
+`state.yaml` dosyasında `cash` alanı her zaman bulunur; yüklenirken alan değerleri aynen korunur, herhangi bir türetme ya da dönüştürme yapılmaz.
 
 ### Bağımlılıklar
 
 | Bağımlılık | Sürüm | Amaç |
 |------------|-------|------|
 | Spring Boot Web | 4.0.0 | REST/MVC çerçevesi |
-| Spring Shell | 4.0.2 | CLI komut arayüzü |
+| Spring Shell | 4.0.2 | Bağımlılık olarak mevcut; kabuk runner'ı devre dışı (CLI girişi `CommandLineRunner` ile yürür) |
 | SMILE Core | 6.2.3 | ML algoritmaları (RF/SVM/KNN) |
 | Jackson YAML | - | state.yaml kalıcılığı |
 | Spring Boot Test | - | Test çerçevesi |
@@ -236,7 +248,11 @@ N=20 günlük getiri bazlı etiketleme:
 
 ### YahooClient
 
-Yahoo Finance'den hem OHLCV fiyat serisi (`v8/finance/chart/`) hem de temel verileri (`quoteSummary` + crumb/cookie) çeker. Rate-limit (429) ve 5xx hatalarında katlanarak backoff ile 3 kez yeniden dener. Fiyat çıktısı: `tarih,kapanis,hacim`.
+Yahoo Finance'den hem OHLCV fiyat serisi (`v8/finance/chart/`) hem de temel verileri (`quoteSummary` + crumb/cookie) çeker. Crumb gerektiren isteklerde URL her denemede güncel crumb ile kurulur; 401'de crumb/çerez yenilenir. Rate-limit (429) ve 5xx hatalarında katlanarak backoff ile 3 kez yeniden dener, tüm isteklerde `bist.scrape.delay-ms` gecikmesi uygular. Temel veriler gün bazlı TTL ile bellekte önbelleklenir (eğitim ve tahmin aynı sembol için veri çekimini tekrarlamaz). Fiyat çıktısı: `tarih,kapanis,hacim`.
+
+### Veri Tazeliği ve "Veri Yok" Durumu
+
+Fiyat önbelleği (`cache/price_*.csv`) son barı `Europe/Istanbul` saat diliminde, **hafta sonu/tatil toleranslı** (son bar ≥ bugün − 4 gün) bir pencereyle taze sayar; o gün barı oluşmayacakken tüm seriler gereksiz yere yeniden indirilmez. Fiyat verisi alınamayan sembol için **sahte fiyat üretilmez**: portföy görünümünde `currentPrice`/`pnlPct`/`pnlTl` alanları `null` döner ve arayüzde "veri yok" gösterilir; analizde böyle pozisyonlar için karar üretilmez ve uyarı satırı basılır.
 
 ---
 
@@ -259,7 +275,9 @@ Tarayıcıda `http://localhost:8080` açılır. Tek sayfa arayüz:
 java -jar target/bist-advisor-0.1.0.jar init --budget=50000 --mode=BALANCED --model=RANDOM_FOREST --pos=THYAO:100:240,ASELS:50:351
 ```
 
-`--budget` toplam sermayedir (nakit + pozisyonların maliyet tabanı). Örnek portföyde maliyet 24.000 + 17.550 = 41.550 TL olur, kalan nakit 8.450 TL olarak hesaplanır.
+`--budget` toplam sermaye katkısıdır (kullanıcının koyduğu para). Örnek portföyde maliyet 24.000 + 17.550 = 41.550 TL olur, nakit 8.450 TL olarak kurulur.
+
+> **Çalışma modu:** İlk argüman bilinen bir komut (`init/run/confirm/status/train`) ya da `--cli` bayrağı olduğunda CLI modu başlar; `--cli` sonradan da kullanılabilir (örn. `java -jar app.jar --cli train`). Diğer argümanlar (örn. `--spring.profiles.active=prod`, `--server.port=9090`) Spring yapılandırmasıdır ve uygulama **Web modunda** açılır. Bilinmeyen bir komut adı verilirse uygulama hata ile çıkar.
 
 ### CLI: Günlük Analiz
 
@@ -318,17 +336,21 @@ Tüm uç noktalar `/api` altında sunulur.
 ```json
 {
   "holdings": [
-    {"index": 1, "symbol": "THYAO", "action": "SAT", "lots": 100, "price": 245.5, "score": 0.0, "note": "+2.30% | skor=0.35"}
+    {"index": 1, "symbol": "THYAO", "action": "SAT", "lots": 100, "price": 245.5, "score": 0.35, "note": "+2.30% | skor=0.35"},
+    {"index": 2, "symbol": "BOZUK", "action": "TUT", "lots": 10, "price": null, "score": null, "note": "veri yok"}
   ],
   "buys": [
-    {"index": 2, "symbol": "AKBNK", "action": "AL", "lots": 200, "price": 185.0, "score": 0.72, "note": "skor=0.72"}
+    {"index": 3, "symbol": "AKBNK", "action": "AL", "lots": 200, "price": 185.0, "score": 0.72, "note": "skor=0.72"}
   ],
   "availableCash": 12500.0,
   "positionCount": 2,
   "maxPositions": 5,
-  "buySlots": 2
+  "buySlots": 2,
+  "warnings": ["Fiyat verisi alinamadi: BOZUK"]
 }
 ```
+
+`price`/`score` alanları veri/tahmin yoksa `null` döner (sahte değer üretilmez). `buySlots` doldurulabilecek **yeni** pozisyon sayısını verir; mevcut pozisyonlara ekleme yapmak slot harcamaz.
 
 ---
 
@@ -343,7 +365,11 @@ Testler JUnit Jupiter ile yazılmıştır ve ağa bağımlılığı yoktur. Gird
 | `BistAdvisorTest` | Teknik göstergeler (RSI, volatilite), etiketleyici (AL sınıflandırması), Yahoo JSON ayrıştırma |
 | `FeatureVectorTest` | Öznitelik normalizasyonu: ölçekleme, uç değer kırpma, immutability |
 | `ModelStrategiesTest` | Model stratejileri: sınıf ayrımı, eksik/tek sınıf güvenliği, KNN k=5 davranışı |
-| `PortfolioServiceTest` | Portföy muhasebesi: kısmi satış, nakit türetimi, bütçe doğrulaması, `state.yaml` göçü |
+| `AllocationPlannerTest` | Karar kuralları: SAT/AL çakışmaması, slot muhasebesi, satış sermayesinin bütçeye katılması, "veri yok" davranışı, skor doldurma |
+| `ScoreGateTest` | Model bazlı eşik yorumu: KNN'de oy ızgarasına yuvarlama + asgari komşu anlaşması |
+| `PortfolioServiceTest` | Nakit muhasebesi: gerçekleşen kâr/zararın nakde yansıması, kısmi/tam satış, negatif nakit, manuel güncelleme mutabakatı, `state.yaml` yükleme |
+| `CacheStoreTest` | Fiyat önbelleği: hafta sonu/tatil toleranslı tazelik penceresi, bozuk dosya güvenliği |
+| `CliModeDetectionTest` | CLI/Web ayrımı: komut tespiti, `--cli` bayrağı, Spring argümanlarının Web modunu bozmaması |
 
 ### Test Çalıştırma
 
@@ -379,11 +405,28 @@ mvn test -Dtest=BistAdvisorTest
 
 `PortfolioServiceTest` portföy muhasebesini doğrular (geçici `state.yaml` dosyasıyla):
 
-- `kismiSatisPozisyonuKuculturVeNakitTuretilir()`: kısmi satış + nakit türetimi
-- `fazlaSatisReddedilir()` / `tamSatisPozisyonuKaldirir()`: lot sınırı ve pozisyon kapanışı
-- `nakitUzerindeAlimReddedilir()`: nakit üstü alımın reddi
-- `butceAsimiDogrulamaylaBildirilir()`: sermaye aşımı uyarısı
-- `eskiSurumButceSemantigiToplamSermayeyeYukseltilir()`: eski `state.yaml`'dan göç
+- `initPortfolioNakdiSermayedenKurar()`: sermaye − maliyet = nakit kurgusu
+- `kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir()`: kısmi satış + gerçekleşen kârın nakde işlenmesi
+- `tamSatisPozisyonuKaldirirVeKariYansitir()` / `zararliSatisNakdiAzaltir()`: tam satışta kâr ve zarar muhasebesi
+- `fazlaSatisReddedilir()` / `nakitUzerindeAlimReddedilir()`: lot ve nakit sınırları
+- `negatifNakitDogrulamaylaBildirilir()`: sermaye aşımı uyarısı
+- `updatePortfolioButceDegisikliginiNakdeIsler()` / `updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler()`: manuel güncelleme mutabakatı
+- `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` alanlarının aynen yüklenmesi
+
+`AllocationPlannerTest` karar kurallarını doğrular:
+
+- `satIsaretiAyniSemboluAlListesineKoymaz()`: stop-loss edilen sembolün aynı turda AL'a girmemesi
+- `mevcutPozisyonaEklemeSlotHarcamazVeYeniAdayDisaridaKalir()` / `acilanSlotYeniPozisyonaKullanilir()`: slot muhasebesi
+- `satislarinSerbestBiraktigiSermayeAlimButcesineEklenir()`: satış tutarının alım bütçesine katılması
+- `fiyatVerisiOlmayanPozisyondaSahteFiyatUretilmez()`: "veri yok" davranışı ve uyarısı
+- `holdingSkoruDoldurulurVeNotYuzdeyiTasir()`: skor/not içerikleri
+- `esikAltiAlimAdayiEle()` / `modelSkoruEsigiGecmeyenPozisyonSatilmaz()` / `modelSkoruEsigiGecenPozisyonSatilir()`: eşik kapıları
+
+`ScoreGateTest` eşik yorumlamasını doğrular: KNN'de eşiklerin oy ızgarasına (1/5 paylar) tavanlı yuvarlanması, tek komşu oyunun karar üretememesi, RandomForest/SVM'de temel eşiğin korunması.
+
+`CacheStoreTest` önbellek tazelik kuralını doğrular: tolerans penceresi içindeki barın taze, eskisinin bayat sayılması; bozuk dosya güvenliği; yazma/okuma yuvarlanması.
+
+`CliModeDetectionTest` çalışma modu ayrımını doğrular: bilinen komutların ve `--cli` bayrağının CLI başlatması, Spring argümanlarının (`--spring.profiles.active=...`) Web modunu bozmaması.
 
 ---
 
@@ -393,10 +436,11 @@ mvn test -Dtest=BistAdvisorTest
 |---------|-------------|
 | Başarılı analiz | 200 OK |
 | Kaynak bulunamadı | 200 OK (boş liste) |
+| Fiyat verisi alınamadı | 200 OK (`price: null`, "veri yok" — sahte fiyat üretilmez) |
 | Geçersiz portföy verisi | 200 OK (`{"status":"error"}`, kayıt yapılmaz) |
-| Kural ihlali (ör. nakit aşımı, fazla lot) | 200 OK (`{"status":"warning"}`, kayıt yapılır) |
+| Kural ihlali (ör. negatif nakit, fazla lot) | 200 OK (`{"status":"warning"}`, kayıt yapılır) |
 | Model eğitilemedi (endeks verisi yok) | 500 Internal Server Error |
-| Yahoo API hatası | Sessiz atlanır, boş veri döndürülür |
+| Yahoo API hatası | Sessiz atlanır, boş veri döndürülür; etkilenen semboller uyarı listesinde |
 | state.yaml okunamaz | Boş portföy ile başlatılır |
 
 Servis katmanı hataları loglanır; fiyat/temel veri alınamazsa boş veya varsayılan değerlerle devam edilir.
@@ -598,7 +642,7 @@ The `budget` field is the **total capital** (cash + positions' cost basis). Avai
 cash = budget − Σ (lots × average cost)
 ```
 
-Buy/sell transactions never change total capital; they only redistribute it between cash and cost basis. Partial sells are supported: the position shrinks by the sold lots while the average cost is preserved. Legacy `state.yaml` files where `budget` meant "remaining cash" are upgraded to total capital automatically on first load (logged).
+Buy/sell transactions never change total capital; they only redistribute it between cash and cost basis. Partial sells are supported: the position shrinks by the sold lots while the average cost is preserved.
 
 ### Dependencies
 
@@ -777,7 +821,7 @@ Tests use JUnit Jupiter with no network dependency. Inputs are synthetic price s
 | `BistAdvisorTest` | Technical features (RSI, volatility), Labeler (BUY classification), Yahoo JSON parsing |
 | `FeatureVectorTest` | Feature normalization: scaling, clamping of extremes, immutability |
 | `ModelStrategiesTest` | Model strategies: class separation, missing/single-class safety, KNN k=5 behavior |
-| `PortfolioServiceTest` | Portfolio accounting: partial sells, cash derivation, budget validation, `state.yaml` migration |
+| `PortfolioServiceTest` | Portfolio accounting: partial sells, budget validation, `state.yaml` loading |
 
 ### Running Tests
 
@@ -817,7 +861,7 @@ mvn test -Dtest=BistAdvisorTest
 - `fazlaSatisReddedilir()` / `tamSatisPozisyonuKaldirir()`: lot limits and position closing
 - `nakitUzerindeAlimReddedilir()`: buys beyond available cash are rejected
 - `butceAsimiDogrulamaylaBildirilir()`: capital-overspend warning
-- `eskiSurumButceSemantigiToplamSermayeyeYukseltilir()`: migration from legacy `state.yaml`
+- `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` fields are loaded as-is
 
 ---
 
