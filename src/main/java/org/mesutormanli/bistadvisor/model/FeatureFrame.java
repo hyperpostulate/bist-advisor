@@ -5,25 +5,32 @@ import org.mesutormanli.bistadvisor.features.FeatureVector;
 import java.util.List;
 
 /**
- * Öznitelik vektörlerini ve etiketleri makine öğrenimi modellerinin
- * beklediği dizi formatlarına dönüştüren yardımcı sınıf.
+ * Köprü/yardımcı sınıf: {@link FeatureVector} listelerini ve etiket listelerini SMILE
+ * modellerinin beklediği dizi formatlarına dönüştürür ve öznitelik kolon adlarını sağlar.
+ *
+ * <p>SMILE {@code DataFrame} kolon adları {@link FeatureVector#featureNames()} ile aynıdır
+ * (11 öznitelik); bu sayede rastgele orman gibi formül tabanlı modeller öznitelikleri adıyla
+ * adresleyebilir. Tüm üyeler statiktir, sınıf örneklenemez.
  */
 public final class FeatureFrame {
 
+    /**
+     * Kurar: yardımcı sınıfın örneklenmesini engelleyen özel yapıcı.
+     */
     private FeatureFrame() {}
 
     /**
-     * Öznitelik adlarını döndürür (delege: {@link FeatureVector#featureNames()}).
+     * Döndürür: öznitelik kolon adlarını verir (SMILE kolon adları).
      *
-     * @return öznitelik isimleri dizisi
+     * @return 11 boyutlu öznitelik isimleri dizisi
      */
     public static String[] names() { return FeatureVector.featureNames(); }
 
     /**
-     * {@link FeatureVector} listesini {@code double[N][11]} matrisine dönüştürür.
+     * Dönüştürür: {@link FeatureVector} listesini eğitim matrisine çevirir.
      *
      * @param features öznitelik vektörleri listesi
-     * @return eğitim matrisi
+     * @return özellik matrisi ({@code double[N][11]})
      */
     public static double[][] toMatrix(List<FeatureVector> features) {
         double[][] m = new double[features.size()][];
@@ -32,10 +39,10 @@ public final class FeatureFrame {
     }
 
     /**
-     * {@link Integer} listesini {@code int[]} dizisine dönüştürür.
+     * Dönüştürür: {@link Integer} etiket listesini ilkel diziye çevirir.
      *
      * @param labels etiket listesi
-     * @return etiket dizisi
+     * @return etiket dizisi ({@code int[N]})
      */
     public static int[] toLabels(List<Integer> labels) {
         return labels.stream().mapToInt(Integer::intValue).toArray();

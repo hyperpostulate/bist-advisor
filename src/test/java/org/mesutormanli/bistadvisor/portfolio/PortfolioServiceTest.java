@@ -13,17 +13,30 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link PortfolioService} portföy muhasebesinin birim testleri: açık nakit modeli
- * (gerçekleşen kâr/zararın nakde yansıması), kısmi/tam satış,
- * nakit kontrolü, manuel güncelleme mutabakatı ve {@code state.yaml} yükleme.
+ * {@link PortfolioService} portföy muhasebesinin testleri: açık nakit modeli
+ * (gerçekleşen kâr/zararın nakde yansıması), kısmi/tam satış, lot ve nakit
+ * kontrollerinin reddedilmesi, manuel güncelleme mutabakatı ve
+ * {@code state.yaml} yükleme.
  * <p>
- * Hiçbir test ağa çıkmaz; state dosyası geçici dizine yazılır.
+ * Her test {@code @TempDir} altında kendi durum dosyasıyla çalışır; hiçbir test
+ * ağa çıkmaz ve gerçek portföy dosyasına dokunmaz.
  */
 class PortfolioServiceTest {
 
     @TempDir
     Path dir;
 
+    /**
+     * Geçici dizin altında yeni bir {@link PortfolioService} kurar.
+     * <p>
+     * {@code @TempDir} altında {@code cache} ve {@code state.yaml} yolları
+     * belirlenir; {@link AppConfig} alanları {@code ReflectionTestUtils} ile
+     * doldurularak servis gerçek proje dizinlerinden izole edilir. Servis
+     * kurucuda durumu diskten yüklediği için önceden yazılmış {@code state.yaml}
+     * varsa aynen okunur.
+     *
+     * @return geçici dizine bağlı yeni bir {@link PortfolioService}
+     */
     private PortfolioService newService() {
         AppConfig cfg = new AppConfig();
         ReflectionTestUtils.setField(cfg, "cacheDir", dir.resolve("cache").toString());
@@ -31,6 +44,14 @@ class PortfolioServiceTest {
         return new PortfolioService(cfg);
     }
 
+    /**
+     * Portföyün nakit sermayeden kurulması ve pozisyon maliyetinin düşülmesi.
+     * <p>
+     * Senaryo: 50.000 TL bütçeyle 100×240 TL'lik THYAO (24.000 TL) ve 50×351 TL'lik
+     * ASELS (17.550 TL) pozisyonları tanımlanır. Beklenen davranış: yatırılan
+     * maliyet 41.550 TL olur, geriye kalan 8.450 TL nakit olarak yazılır ve
+     * doğrulama uyarısız ({@code null}) geçer.
+     */
     @Test
     void initPortfolioNakdiSermayedenKurar() {
         PortfolioService svc = newService();
@@ -38,12 +59,20 @@ class PortfolioServiceTest {
         svc.initPortfolio(50_000, "BALANCED", "RANDOM_FOREST",
                 List.of(new Position("THYAO", 100, 240), new Position("ASELS", 50, 351)));
 
-        // 24.000 + 17.550 = 41.550 maliyet → nakit 8.450
         assertEquals(8_450, svc.availableCash(), 0.01);
         assertEquals(41_550, svc.investedCost(), 0.01);
         assertNull(svc.validatePortfolio());
     }
 
+    /**
+     * Kısmi satışta kalan lot ve gerçekleşen kâr nakde yansır.
+     * <p>
+     * Senaryo: 100.000 TL nakitle 100 lot THYAO 240 TL'den alınır (nakit 76.000 TL)
+     * ve bunun 40 lotu 250 TL'den satılır. Beklenen davranış: pozisyon 60 lotta ve
+     * 240 TL ortalama maliyetle (maliyet sabit kalır) küçülür; 40×(250−240)=400 TL
+     * gerçekleşen kâr dahil nakit 86.000 TL'ye çıkar, nakit+yatırım toplamı
+     * 100.400 TL olur, bütçe 100.000 TL'de kalır ve doğrulama uyarısız geçer.
+     */
     @Test
     void kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir() {
         PortfolioService svc = newService();
@@ -52,7 +81,6 @@ class PortfolioServiceTest {
         assertTrue(svc.applyTransaction("thyao", "AL", 100, 240));
         assertEquals(76_000, svc.availableCash(), 0.01);
 
-        // 40 lot @ 250 satılır: 10.000 tutar nakde döner, 400 TL kâr gerçekleşir
         assertTrue(svc.applyTransaction("THYAO", "SAT", 40, 250));
 
         PortfolioState s = svc.getState();
@@ -60,12 +88,19 @@ class PortfolioServiceTest {
         assertEquals("THYAO", s.positions.get(0).symbol());
         assertEquals(60, s.positions.get(0).lots());
         assertEquals(240, s.positions.get(0).avgCost(), 0.01);
-        assertEquals(86_000, svc.availableCash(), 0.01);          // 76.000 + 10.000
-        assertEquals(100_400, svc.availableCash() + svc.investedCost(), 0.01); // +400 kâr
-        assertEquals(100_000, s.budget, 0.01);                     // sermaye katkısı sabit
+        assertEquals(86_000, svc.availableCash(), 0.01);
+        assertEquals(100_400, svc.availableCash() + svc.investedCost(), 0.01);
+        assertEquals(100_000, s.budget, 0.01);
         assertNull(svc.validatePortfolio());
     }
 
+    /**
+     * Tam satımda pozisyonun kalkması ve kârın nakde girmesi.
+     * <p>
+     * Senaryo: 100 lot THYAO 240 TL'den alınıp tamamı 250 TL'den satılır.
+     * Beklenen davranış: pozisyon listesi boşalır, 1.000 TL kârla nakit 101.000 TL
+     * olur ve bütçe 100.000 TL'de sabit kalır.
+     */
     @Test
     void tamSatisPozisyonuKaldirirVeKariYansitir() {
         PortfolioService svc = newService();
@@ -75,11 +110,17 @@ class PortfolioServiceTest {
         assertTrue(svc.applyTransaction("THYAO", "SAT", 100, 250));
 
         assertTrue(svc.getState().positions.isEmpty());
-        // 240'tan alıp 250'den satmak 1.000 TL kâr bırakmalı
         assertEquals(101_000, svc.availableCash(), 0.01);
         assertEquals(100_000, svc.getState().budget, 0.01);
     }
 
+    /**
+     * Zararlı satımda nakdin azalması.
+     * <p>
+     * Senaryo: 100 lot THYAO 240 TL'den alınıp 200 TL'den satılır. Beklenen
+     * davranış: 4.000 TL gerçekleşen zarar nakitten düşer ve nakit 96.000 TL'ye
+     * iner.
+     */
     @Test
     void zararliSatisNakdiAzaltir() {
         PortfolioService svc = newService();
@@ -88,10 +129,15 @@ class PortfolioServiceTest {
 
         assertTrue(svc.applyTransaction("THYAO", "SAT", 100, 200));
 
-        // 24.000 maliyetle alınıp 20.000'e satıldı → 4.000 TL zarar nakde işlendi
         assertEquals(96_000, svc.availableCash(), 0.01);
     }
 
+    /**
+     * Elde olmayan lotun satılmasının reddedilmesi.
+     * <p>
+     * Senaryo: 100 lotu varken 150 lot THYAO satışı istenir. Beklenen davranış:
+     * işlem {@code false} ile reddedilir ve pozisyon 100 lot olarak aynen kalır.
+     */
     @Test
     void fazlaSatisReddedilir() {
         PortfolioService svc = newService();
@@ -105,23 +151,38 @@ class PortfolioServiceTest {
         assertEquals(100, s.positions.get(0).lots());
     }
 
+    /**
+     * Nakit üstü alımın reddedilip karşılanabilen kısmi alımın kabul edilmesi.
+     * <p>
+     * Senaryo: 100.000 TL nakitle önce 400×240=96.000 TL'lik alım yapılır; kalan
+     * 4.000 TL'ye 100 lotluk alım (24.000 TL) sığmaz, 10 lotluk alım (2.400 TL) sığar.
+     * Beklenen davranış: büyük alım {@code false} ile reddedilir, 10 lotluk alım
+     * kabul edilir, nakit 1.600 TL olarak kalır ve doğrulama uyarısız geçer.
+     */
     @Test
     void nakitUzerindeAlimReddedilir() {
         PortfolioService svc = newService();
         svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
 
-        assertTrue(svc.applyTransaction("THYAO", "AL", 400, 240));   // 96.000
-        assertFalse(svc.applyTransaction("THYAO", "AL", 100, 240));  // 24.000 > 4.000 nakit
-        assertTrue(svc.applyTransaction("THYAO", "AL", 10, 240));    // 2.400 ≤ 4.000 nakit
+        assertTrue(svc.applyTransaction("THYAO", "AL", 400, 240));
+        assertFalse(svc.applyTransaction("THYAO", "AL", 100, 240));
+        assertTrue(svc.applyTransaction("THYAO", "AL", 10, 240));
 
         assertEquals(1_600, svc.availableCash(), 0.01);
         assertNull(svc.validatePortfolio());
     }
 
+    /**
+     * Negatif nakdin doğrulama uyarısıyla bildirilmesi.
+     * <p>
+     * Senaryo: 1.000 TL bütçeyle maliyeti 2.000 TL olan 10 lot THYAO (200 TL)
+     * yüklenir. Beklenen davranış: nakit −1.000 TL'ye iner ve
+     * {@code validatePortfolio} {@code "nakit"} kelimesini içeren bir uyarı
+     * döndürür.
+     */
     @Test
     void negatifNakitDogrulamaylaBildirilir() {
         PortfolioService svc = newService();
-        // maliyeti (2.000) sermayesini (1.000) aşan portföy → negatif nakit
         svc.initPortfolio(1_000, "BALANCED", "RANDOM_FOREST",
                 List.of(new Position("THYAO", 10, 200)));
 
@@ -131,21 +192,34 @@ class PortfolioServiceTest {
         assertEquals(-1_000, svc.availableCash(), 0.01);
     }
 
+    /**
+     * Bütçe değişikliğinin fark kadar nakde işlenmesi.
+     * <p>
+     * Senaryo: 100.000 TL nakitli portföyde bütçe önce 110.000 TL'ye, sonra
+     * 105.000 TL'ye güncellenir. Beklenen davranış: her artış/azalış doğrudan nakde
+     * yansıtılır; nakit sırayla 110.000 TL ve 105.000 TL olur.
+     */
     @Test
     void updatePortfolioButceDegisikliginiNakdeIsler() {
         PortfolioService svc = newService();
         svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
 
-        // para yatırma: +10.000 nakde işlenir
         svc.updatePortfolio(110_000, null, null, null, null);
         assertEquals(110_000, svc.availableCash(), 0.01);
 
-        // para çekme: −5.000 nakde işlenir
         svc.updatePortfolio(105_000, null, null, null, null);
         assertEquals(105_000, svc.availableCash(), 0.01);
     }
 
+    /**
+     * Pozisyon değişikliğinin maliyet farkı kadar nakde işlenmesi.
+     * <p>
+     * Senaryo: boş portföye 10 lot THYAO 240 TL'lik pozisyon eklenir, ardından
+     * pozisyon listesi tekrar boşaltılır. Beklenen davranış: ekleme nakitten maliyet
+     * kadar (−2.400 TL) götürür (nakit 97.600 TL), çıkarma aynı farkı geri verir
+     * (+2.400 TL, nakit 100.000 TL).
+     */
     @Test
     void updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler() {
         PortfolioService svc = newService();
@@ -154,14 +228,22 @@ class PortfolioServiceTest {
         svc.updatePortfolio(0, null, null, null, List.of(new Position("THYAO", 10, 240)));
         assertEquals(97_600, svc.availableCash(), 0.01);
 
-        // pozisyon kaydı silinince maliyet bedeli nakde geri döner
         svc.updatePortfolio(0, null, null, null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
     }
 
+    /**
+     * {@code state.yaml} alanlarının aynen yüklenmesi.
+     * <p>
+     * Senaryo: geçici dizine bütçe 1.000, nakit 500 ve 10 lot THYAO 90 TL maliyetli
+     * pozisyon içeren YAML metin bloğu yazılır. Beklenen davranış: yeni servis bu
+     * durumu kurucuda aynen okur; nakit 500 TL ve bütçe 1.000 TL olduğu gibi
+     * görünür.
+     *
+     * @throws IOException test YAML dosyası yazılamazsa
+     */
     @Test
     void yamlDosyasiAlanlariAynenYuklenir() throws IOException {
-        // 1.000 TL sermaye katkısı + 400 TL gerçekleşen kâr (nakit 500 + maliyet 900 = 1.400)
         Files.writeString(dir.resolve("state.yaml"), """
                 budget: 1000.0
                 cash: 500.0

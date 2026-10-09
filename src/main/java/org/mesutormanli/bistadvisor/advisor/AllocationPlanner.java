@@ -11,35 +11,38 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Günlük öneri kararlarını üreten saf (side-effect'siz) planlayıcı.
+ * Günlük AL/TUT/SAT önerilerini üreten saf (durumsuz) planlayıcı.
  * <p>
- * Veri erişimi ve model tahmini {@code DailyAdvisor} tarafından hazırlanıp bu sınıfa
- * girdi olarak verilir; burada yalnızca karar mantığı çalışır — böylece karar kuralları
- * ağ erişimi olmadan birim teste alınabilir. Düzelttiği iç tutarsızlıklar:
+ * Veri erişimi ve model tahmini dışarıdan hazır girdi olarak verilir; bu sınıf
+ * portföy durumunu <em>değiştirmez</em>, yalnızca öneri üretir. Böylece karar
+ * kuralları ağ erişimi olmadan test edilebilir. Öne çıkan davranışları:
+ * </p>
  * <ul>
- *   <li>Stop-loss ile SAT işaretlenen sembol aynı turda AL adayı olamaz.</li>
- *   <li>Pozisyon slotu yalnızca <em>yeni</em> pozisyon adayları için sayılır;
+ *   <li>Stop-loss (%10/%15/%25 risk moduna göre) ya da modelin SAT sınıfı +
+ *       satış skor eşiğini geçen güven ile SAT'a işaretlenen sembol, aynı turda
+ *       AL listesine girmez.</li>
+ *   <li>Pozisyon slotu yalnızca <em>yeni</em> pozisyon adayları için harcanır;
  *       mevcut pozisyona ekleme slot harcamaz.</li>
- *   <li>Aynı turda önerilen satışların serbest bırakacağı sermaye (tahmini
- *       tutar = lot × güncel fiyat) alım bütçesine eklenir.</li>
- *   <li>Fiyat verisi olmayan pozisyonlar için sahte fiyat üretilmez; karar
- *       üretilmez ve uyarı listesine eklenir.</li>
- *   <li>Holding önerileri de gerçek skorunu taşır; eşikler model türüne göre
- *       yorumlanır ({@link ScoreGate}).</li>
+ *   <li>Satışların tahmini brüt geliri (lot × fiyat) planlanmış sermayeye eklenir.</li>
+ *   <li>Fiyat verisi olmayan pozisyon için sahte fiyat üretilmez; TUT önerilir
+ *       ve uyarı listesine not düşülür.</li>
+ *   <li>Alım bütçesi seçilen adayların skorlarına orantılı dağıtılır.</li>
  * </ul>
+ *
+ * @see ScoreGate
  */
 public final class AllocationPlanner {
 
     /**
-     * Mevcut pozisyonun karar öncesi görünümü.
+     * Mevcut bir pozisyonun karar öncesi görünümü.
      *
-     * @param symbol    hisse sembolü
-     * @param lots      lot sayısı
-     * @param avgCost   ortalama maliyet
-     * @param price     güncel fiyat ({@code null} = veri yok)
-     * @param predClass model sınıf tahmini ({@link Labeler#BUY}/{@link Labeler#SELL}/
-     *                  {@link Labeler#HOLD}; {@code null} = tahmin yok)
-     * @param score     model güven skoru ({@code null} = tahmin yok)
+     * @param symbol    pozisyondaki hissenin sembolü
+     * @param lots      pozisyondaki lot adedi
+     * @param avgCost   pozisyonun ortalama maliyeti
+     * @param price     güncel fiyat; {@code null} olması fiyat verisinin alınamadığını belirtir
+     * @param predClass model sınıf tahmini ({@link Labeler#BUY} vb.);
+     *                  {@code null} olması tahmin üretilemediğini belirtir
+     * @param score     model skoru/güveni; {@code null} olması tahmin üretilemediğini belirtir
      */
     public record HoldingInput(String symbol, int lots, double avgCost,
                                Double price, Integer predClass, Double score) {}
@@ -47,53 +50,86 @@ public final class AllocationPlanner {
     /**
      * Alım adayının karar öncesi görünümü.
      *
-     * @param symbol    hisse sembolü
-     * @param price     güncel fiyat
-     * @param score     model güven skoru
-     * @param predClass model sınıf tahmini
-     * @param existing  sembol portföyde mevcut bir pozisyon mu? (slot harcamaz)
+     * @param symbol    aday hissenin sembolü
+     * @param price     adayın güncel fiyatı
+     * @param score     model skoru/güveni
+     * @param predClass model sınıf tahmini ({@link Labeler#BUY} vb.)
+     * @param existing  adayın mevcut bir pozisyona ek mi olduğu; {@code true} ise
+     *                  slot harcamadan seçime dâhil edilir
      */
     public record CandidateInput(String symbol, double price, Double score,
                                  Integer predClass, boolean existing) {}
 
     /**
-     * Sonuç önerisi.
+     * Tek bir sembol için üretilen AL/TUT/SAT önerisi.
      *
-     * @param symbol hisse sembolü
-     * @param action işlem (AL/SAT/TUT)
-     * @param lots   lot miktarı
-     * @param price  öneri fiyatı ({@code null} = veri yok)
-     * @param score  model skoru ({@code null} = tahmin yok)
-     * @param note   açıklama
+     * @param symbol önerinin ait olduğu hissenin sembolü
+     * @param action işlem: {@code AL}, {@code TUT} ya da {@code SAT}
+     * @param lots   önerilen lot adedi (mevcut pozisyonlarda mevcut lot)
+     * @param price  kararın dayanak fiyatı; {@code null} = fiyat verisi yok
+     * @param score  model skoru/güveni; {@code null} = tahmin yok
+     * @param note   kararın gerekçesini özetleyen not (örn. k/z yüzdesi, skor)
      */
     public record Planned(String symbol, String action, int lots,
                           Double price, Double score, String note) {}
 
     /**
-     * Planlanmış günlük kararlar.
+     * Günlük planın tamamı: pozisyon önerileri, alım önerileri ve plan özeti.
      *
-     * @param holdings        mevcut pozisyon önerileri (SAT/TUT)
-     * @param buys            alım önerileri (AL)
-     * @param buySlots        doldurulabilecek <em>yeni</em> pozisyon sayısı
-     * @param plannedCapital  alım planında kullanılan sermaye (nakit + satışların
-     *                        tahmini tutarı)
-     * @param warnings        kullanıcıya gösterilecek uyarılar (ör. veri yok)
+     * @param holdings        mevcut pozisyonlar için öneriler (aynı sırada)
+     * @param buys            alım önerileri (skora göre azalan sırada)
+     * @param buySlots        boş kalan yeni pozisyon slotu sayısı
+     * @param plannedCapital  planlanmış sermaye (nakit + satış geliri)
+     * @param warnings        kullanıcıya gösterilecek uyarı satırları
      */
     public record Plan(List<Planned> holdings, List<Planned> buys, int buySlots,
                        double plannedCapital, List<String> warnings) {}
 
+    /**
+     * Örnek oluşturulmasını engelleyen gizli yapıcı; sınıf yalnızca statik
+     * {@link #plan} yöntemiyle kullanılır.
+     */
     private AllocationPlanner() {}
 
     /**
-     * Günlük planı üretir.
+     * Pozisyonlar ve adaylar için günlük AL/TUT/SAT planını üretir.
      *
-     * @param holdings      mevcut pozisyonlar
-     * @param candidates    alım adayları (filtrelenmemiş; planlayıcı eleyecektir)
-     * @param mode          yatırım modu (eşikler/stop-loss/risk yüzdesi)
-     * @param modelType     model türü (eşik yorumlaması için)
-     * @param cash          kullanılabilir nakit
-     * @param maxPositions  maksimum pozisyon sayısı
-     * @return planlanmış kararlar
+     * <p>Akış şöyledir:</p>
+     * <ol>
+     *   <li>Her pozisyon için k/z yüzdesi (fiyat − ortalama maliyet) / ortalama
+     *       maliyet hesaplanır ve not metnine "{@code +/-X.XX%}" biçiminde yazılır.
+     *       Fiyat yoksa "veri yok" notu ile TUT önerilir ve uyarı eklenir.
+     *       SAT kararı iki durumdan biriyle verilir: stop-loss (k/z ≤ −stopLossPct)
+     *       ya da modelin SAT sınıfı + {@link ScoreGate#passes} ile
+     *       {@code sellScoreThreshold} eşiğini geçen güven. SAT notuna skor eklenir,
+     *       sembol satılacak listeye alınır ve brüt satış geliri (lot × fiyat)
+     *       biriktirilir.</li>
+     *   <li>Slot hesabı: satıştan boşalan yerler yeni pozisyonlara ayrılır.</li>
+     *   <li>Aday eleme: SAT'a giren sembol asla AL listesine girmez; adayın
+     *       sınıfı {@link Labeler#BUY} olmalı ve skoru alım eşiğini
+     *       {@link ScoreGate#passes} ile geçmelidir.</li>
+     *   <li>Sıralama ve seçim: adaylar skora göre azalan sıralanır. Mevcut
+     *       pozisyona ekleme ({@code existing=true}) slot harcamaz ve her zaman
+     *       seçilir; yeni adaylar boş slot sayısıyla sınırlıdır.</li>
+     *   <li>Sermaye dağıtım: planlanmış sermaye = nakit + satış geliri; toplam
+     *       bütçe = planlanmış sermaye × risk yüzdesi. Bütçe, skorlarla orantılı
+     *       dağıtılır (pay = bütçe × skor / toplam skor); ayrılan paydan
+     *       {@code floor(pay / fiyat)} lot çıkar, 0 lot çıkan aday atlanır.</li>
+     * </ol>
+     *
+     * @param holdings    karar verilecek mevcut pozisyonlar
+     * @param candidates  alım adayları (portföyde olmayan endeks hisseleri ve
+     *                    mevcut pozisyonlara ekleme adayları)
+     * @param mode        risk profili; risk yüzdesi, alım eşiği, stop-loss ve
+     *                    satış skor eşiğini belirler
+     * @param modelType   eşik yorumlamasında kullanılan model türü
+     *                    ({@link ScoreGate#effectiveThreshold})
+     * @param cash        portföyün kullanılabilir nakdi
+     * @param maxPositions izin verilen maksimum pozisyon sayısı
+     * @return pozisyon önerileri, alım önerileri, boş slot, planlanmış sermaye ve
+     *         uyarıları içeren {@link Plan}; dönen listeler değiştirilemezdir
+     * @implNote Yöntem salt okunurdur: girdi listelerine ve portföy durumuna yazma
+     *           yapmaz, durum tutmaz.
      */
     public static Plan plan(List<HoldingInput> holdings, List<CandidateInput> candidates,
                             AdvisorMode mode, ModelType modelType,
@@ -129,7 +165,6 @@ public final class AllocationPlanner {
         int posCount = holdings.size();
         int buySlots = Math.clamp(maxPositions - (posCount - sellCount), 0, maxPositions);
 
-        // Aday eleme: SAT işaretli sembol AL'a girmez; fiyat/skor eşiği filtresi.
         List<CandidateInput> eligible = new ArrayList<>();
         for (CandidateInput c : candidates) {
             if (sellSymbols.contains(c.symbol())) continue;
@@ -138,7 +173,6 @@ public final class AllocationPlanner {
             eligible.add(c);
         }
 
-        // Slot muhasebesi: slot yalnızca YENİ pozisyonlar için sayılır.
         eligible.sort(Comparator.comparingDouble((CandidateInput c) -> c.score()).reversed());
         List<CandidateInput> chosen = new ArrayList<>();
         int newSlotsUsed = 0;
@@ -152,7 +186,6 @@ public final class AllocationPlanner {
         }
         chosen.sort(Comparator.comparingDouble((CandidateInput c) -> c.score()).reversed());
 
-        // Sermaye planı: nakit + satışların tahmini tutarı.
         double plannedCapital = Math.max(0.0, cash) + sellProceeds;
         double totalBudget = plannedCapital * mode.riskPct;
         double totalScore = chosen.stream().mapToDouble(CandidateInput::score).sum();

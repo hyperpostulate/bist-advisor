@@ -14,6 +14,13 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Komut satırı (CLI) komutlarının uygulaması ve konsol çıktı biçimi.
+ * <p>
+ * {@code init}, {@code run}, {@code confirm}, {@code status} ve {@code train}
+ * komutlarını karşılar; her komut sonucunu Türkçe özet/döküm olarak konsola yazar.
+ * Kalıcılık {@link PortfolioService} üzerinden durum dosyası (state.yaml) ile sağlanır.
+ */
 @Component
 public class AdvisorCommands {
 
@@ -22,7 +29,11 @@ public class AdvisorCommands {
     private final ModelTrainer modelTrainer;
 
     /**
-     * {@code AdvisorCommands} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     * Komut uygulamasını bağımlılıklarıyla kurar.
+     *
+     * @param portfolioService portföyün bellek içi sahibi ve durum dosyası (state.yaml) kalıcılığı
+     * @param dailyAdvisor     günlük analiz ve öneri üreticisi
+     * @param modelTrainer     seçili modeli bellekte eğiten bileşen
      */
     public AdvisorCommands(PortfolioService portfolioService, DailyAdvisor dailyAdvisor, ModelTrainer modelTrainer) {
         this.portfolioService = portfolioService;
@@ -31,13 +42,16 @@ public class AdvisorCommands {
     }
 
     /**
-     * Portföyü ilklendirir: toplam sermaye, yatırım modu, model türü ve başlangıç pozisyonlarını atar.
-     * Nakit, sermayeden pozisyon maliyetleri düşülerek kurulur.
+     * {@code init} komutunu uygular: portföyü bütçe ve parametrelerle başlatır.
+     * <p>
+     * Verilmeyen mod/model mevcut portföyden miras alınır. Önce
+     * {@link PortfolioService#initPortfolio} çağrılır; doğrulama uyarısı varsa
+     * "Uyari:" olarak basılır, ardından sermaye/nakit/mod/model özet satırı yazılır.
      *
-     * @param budget   toplam sermaye katkısı (TL)
-     * @param mode     yatırım modu etiketi (TEMKINLI/DENGELI/AGRESIF)
-     * @param model    ML model anahtarı (random_forest/svm/knn)
-     * @param positions başlangıç pozisyonları listesi
+     * @param budget    başlangıç sermayesi (TL)
+     * @param mode      danışman modu etiketi (null ise mevcut mod miras alınır)
+     * @param model     model anahtarı (null ise mevcut model miras alınır)
+     * @param positions açılacak pozisyon listesi
      */
     public void init(double budget, String mode, String model, List<Position> positions) {
         String modeName = mode != null
@@ -55,7 +69,7 @@ public class AdvisorCommands {
     }
 
     /**
-     * Günlük analizi çalıştırır ve sonuçları konsola yazdırır.
+     * {@code run} komutunu uygular: taze analizi çalıştırıp raporu yazar.
      */
     public void run() {
         AnalysisResult r = dailyAdvisor.analyze();
@@ -63,10 +77,14 @@ public class AdvisorCommands {
     }
 
     /**
-     * Kullanıcı tarafından onaylanan işlemleri portföye uygular.
-     * Her işlem {@code SEMBOL,AL/SAT,lot,fiyat} formatında olmalıdır.
+     * {@code confirm} komutunu uygular: işlemler ayrıştırılıp portföye işlenir.
+     * <p>
+     * Her argüman {@code SEMBOL,AL/SAT,lot,fiyat} biçimindedir. 4 alandan az alan,
+     * geçersiz AL/SAT veya sayısal hata "Hatalar:" listesinde toplanır. Başarılı
+     * işlemler {@link PortfolioService#applyTransaction} ile uygulanır ve sonunda
+     * uygulanan işlem sayısı yazdırılır.
      *
-     * @param args onaylanan işlem listesi
+     * @param args {@code SEMBOL,AL/SAT,lot,fiyat} biçimli işlem metinleri
      */
     public void confirm(List<String> args) {
         List<String> errors = new ArrayList<>();
@@ -102,7 +120,10 @@ public class AdvisorCommands {
     }
 
     /**
-     * Portföyün mevcut durumunu konsola yazdırır (toplam sermaye, nakit, mod, model, pozisyonlar).
+     * {@code status} komutunu uygular: portföy özetini konsola yazar.
+     * <p>
+     * Sermaye, nakit, mod ve modelin yanı sıra pozisyon listesi (sembol, lot,
+     * ortalama maliyet) yazdırılır; en fazla 5 pozisyon gösterilir.
      */
     public void status() {
         PortfolioState s = portfolioService.getState();
@@ -116,7 +137,9 @@ public class AdvisorCommands {
     }
 
     /**
-     * Seçili modeli ve endeksi kullanarak ML modelini eğitir ve bellekte saklar.
+     * {@code train} komutunu uygular: seçili modeli seçili endeks için eğitir.
+     * <p>
+     * {@link ModelTrainer#train} çağrılır; model yalnızca bellekte tutulur.
      */
     public void train() {
         ModelType t = portfolioService.modelType();
@@ -127,9 +150,15 @@ public class AdvisorCommands {
     }
 
     /**
-     * Analiz sonucunu konsola formatlı biçimde yazdırır.
+     * "Günlük Öneri" raporunu konsola yazar.
+     * <p>
+     * Başlıkta pozisyon sayısı (en fazla 5) ve nakit verilir; uyarılar {@code !} önekiyle
+     * basılır. "Mevcut Portföy" bölümünde fiyatı çekilemeyen semboller skorsuz satır olarak
+     * geçer; fiyatı varsa TL kâr/zarar {@code (fiyat − ortalama maliyet) × lot} ile yazılır.
+     * "Al Önerileri" bölümünde lot, fiyat ve skor verilir; rapor "Yatırım tavsiyesi değildir."
+     * yasal uyarı satırıyla kapanır.
      *
-     * @param r analiz sonucu
+     * @param r konsola yazdırılacak günlük analiz sonucu
      */
     private void print(AnalysisResult r) {
         System.out.println("=== Günlük Öneri (" + r.positionCount() + "/5) | Nakit: " + Math.round(r.availableCash()) + " TL ===");

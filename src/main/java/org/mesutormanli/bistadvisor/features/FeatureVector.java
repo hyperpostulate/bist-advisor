@@ -3,23 +3,23 @@ package org.mesutormanli.bistadvisor.features;
 import org.mesutormanli.bistadvisor.data.YahooClient.Fundamentals;
 
 /**
- * 11 boyutlu normalleştirilmiş öznitelik vektörü.
+ * Teknik göstergelerle temel göstergeleri birlikte taşıyan 11 boyutlu, değiştirilemez öznitelik vektörü.
  * <p>
- * Teknik göstergeler (RSI, SMA oranları, MACD, volatilite, hacim oranı) ile
- * temel verileri (F/K, PD/DD, temettü verimi, büyüme, ROE) birleştirir.
- * Tüm değerler {@link #normalize()} ile {@code [0, 1]} aralığına ölçeklenir.
+ * Bileşen sırası {@link #featureNames()} ve {@link #toArray()} düzeniyle, yani modelin beklediği
+ * FeatureFrame/SMILE matris düzeniyle aynıdır. Ham değerler farklı ölçeklerdedir; {@link #normalize()}
+ * her alanı ayrıca [0, 1] aralığına ölçekleyip kırpar ve yeni bir örnek döndürür.
  *
- * @param rsi           Göreceli Güç Endeksi (14 günlük)
- * @param sma20Ratio    20 günlük SMA'ya göre fiyat oranı (close/SMA - 1)
- * @param sma50Ratio    50 günlük SMA'ya göre fiyat oranı
- * @param macd          MACD (12/26 EMA farkı), fiyata bölünerek normalize edilmiş
- * @param volatility    günlük getirilerin standart sapması (20 gün)
+ * @param rsi           RSI değeri (14 dönemlik; ham hâlde [0, 100] dışına taşabilir)
+ * @param sma20Ratio    fiyatın 20 günlük SMA'ya sapması ({@code kapanış/SMA − 1})
+ * @param sma50Ratio    fiyatın 50 günlük SMA'ya sapması ({@code kapanış/SMA − 1})
+ * @param macd          normalize MACD ({@code (EMA12 − EMA26) / son kapanış})
+ * @param volatility    20 günlük getirilerin standart sapması (oynaklık)
  * @param volumeRatio   son hacmin 20 günlük ortalama hacme oranı
- * @param fk            Fiyat/Kazanç oranı
+ * @param fk            F/K oranı
  * @param pdDd          PD/DD oranı
  * @param dividendYield temettü verimi
- * @param profitGrowth  kâr büyüme oranı
- * @param roe           özkaynak karlılığı (Return on Equity)
+ * @param profitGrowth  kâr büyümesi
+ * @param roe           özkaynak kârlılığı (ROE)
  */
 public record FeatureVector(
         double rsi, double sma20Ratio, double sma50Ratio, double macd,
@@ -28,9 +28,9 @@ public record FeatureVector(
 ) {
 
     /**
-     * 11 özniteliğin isimlerini döndürür (model eğitimi için sütun adları).
+     * Modelin beklediği öznitelik kolon adlarını döndürür.
      *
-     * @return öznitelik isimleri dizisi
+     * @return FeatureFrame/SMILE matris düzeninde 11 kolon adı
      */
     public static String[] featureNames() {
         return new String[]{
@@ -40,9 +40,9 @@ public record FeatureVector(
     }
 
     /**
-     * Öznitelik vektörünü {@code double[]} dizisine dönüştürür.
+     * Vektörü FeatureFrame/SMILE matris düzeninde {@code double[]} dizisine dönüştürür.
      *
-     * @return 11 elemanlı dizi
+     * @return bileşen sırası {@link #featureNames()} ile eşleşen 11 elemanlı dizi
      */
     public double[] toArray() {
         return new double[]{rsi, sma20Ratio, sma50Ratio, macd, volatility,
@@ -50,12 +50,18 @@ public record FeatureVector(
     }
 
     /**
-     * Fiyat çubukları ve temel verilerden bir {@code FeatureVector} oluşturur.
-     * Tüm teknik göstergeleri hesaplar ve temel verilerle birleştirir.
+     * Fiyat çubuklarından ve temel göstergelerden öznitelik vektörü üretir.
+     * <p>
+     * Teknik taraf 14 dönemlik RSI, 20 ve 50 günlük SMA oranları, son kapanışa bölünerek
+     * normalize edilmiş MACD ({@code (EMA12 − EMA26) / son kapanış}), 20 günlük oynaklık ve
+     * 20 günlük hacim oranından oluşur; temel taraf F/K, PD/DD, temettü verimi, kâr büyümesi ve
+     * özkaynak kârlılığını (ROE) taşır.
      *
-     * @param fundamentals temel veriler (null olabilir)
+     * @param fundamentals temel göstergeler ({@code null} olabilir)
      * @param bars         fiyat çubukları serisi
-     * @return öznitelik vektörü
+     * @return hesaplanan öznitelik vektörü
+     * @implNote {@code fundamentals} {@code null} ise temel alanlar 0 olur; {@code bars}
+     *           boş veya {@code null} ise tüm bileşenleri 0 olan vektör döner.
      */
     public static FeatureVector fromBars(Fundamentals fundamentals,
                                          java.util.List<TechnicalFeatures.Bar> bars) {
@@ -87,10 +93,16 @@ public record FeatureVector(
     }
 
     /**
-     * Tüm öznitelik değerlerini {@code [0, 1]} aralığına ölçekleyerek
-     * yeni bir {@code FeatureVector} döndürür (orijinal nesne değişmez).
+     * Her alanı [0, 1] aralığına ölçekleyip kırparak yeni bir vektör döndürür.
+     * <p>
+     * Ölçekleme formülleri: RSI → {@code rsi/100}, SMA oranları → {@code (oran+1)/2},
+     * MACD → {@code macd*10+0.5}, oynaklık → {@code volatility*50}, hacim oranı → {@code volumeRatio/3},
+     * F/K → {@code fk/50}, PD/DD → {@code pdDd/10}, temettü verimi → {@code dividendYield/10},
+     * kâr büyümesi → {@code (profitGrowth*100+50)/100}, özkaynak kârlılığı → {@code (roe*100+50)/100}.
      *
-     * @return normalleştirilmiş vektör
+     * @return her bileşeni [0, 1] aralığında olan yeni {@code FeatureVector}
+     * @implNote Ham RSI [0, 100] aralığının dışına taşabilse de dönüş değeri daima
+     *           [0, 1] aralığındadır; kayıt değiştirilemez olduğu için özgün nesne korunur.
      */
     public FeatureVector normalize() {
         return new FeatureVector(
@@ -109,10 +121,10 @@ public record FeatureVector(
     }
 
     /**
-     * Bir değeri {@code [0, 1]} aralığına sıkıştırır.
+     * Değeri [0, 1] aralığına kırpar.
      *
-     * @param v girdi değeri
-     * @return {@code max(0.0, min(1.0, v))}
+     * @param v kırpılacak ham değer
+     * @return [0, 1] aralığına indirgenmiş değer ({@code max(0.0, min(1.0, v))})
      */
     private static double clamp(double v) {
         return Math.max(0.0, Math.min(1.0, v));

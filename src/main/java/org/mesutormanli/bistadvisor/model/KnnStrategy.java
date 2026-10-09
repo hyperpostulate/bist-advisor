@@ -4,29 +4,30 @@ import org.mesutormanli.bistadvisor.config.ModelType;
 import smile.classification.KNN;
 
 /**
- * k-En Yakın Komşu (k-NN) sınıflandırma stratejisi (varsayılan k=5).
- * <p>
- * Eğitim etiketleri {@link ClassSpace} ile {@code 0..K-1} indekslere sıkıştırılır; böylece
- * eğitim setinde bir sınıf hiç oluşmamışsa tahmin istisna fırlatmaz, yalnızca gözlenen
- * sınıflar arasında seçim yapar. Tek sınıf varsa model eğitilmez (SMILE "Only one class"
- * hatası), sabit tahmin döner. Komşu sayısı eğitim örneği sayısından büyükse k otomatik
- * küçülür. SMILE kütüphanesinin {@link KNN} sınıfını kullanır. Eğitim ve tahmin işlemleri
- * thread-safe olacak şekilde senkronize edilmiştir.
+ * k-En Yakın Komşu (k-NN) sınıflandırma stratejisi; SMILE {@link KNN} modelini kullanır.
+ *
+ * <p>Eğitimde etiketler {@link ClassSpace} ile sıkı indekslere sıkıştırılır; böylece SMILE'ın
+ * "olasılık vektörü boyutu = eğitimdeki sınıf sayısı" beklentisi karşılanır ve eğitim setinde
+ * hiç oluşmayan sınıf tahminde istisna üretmez. Komşu sayısı {@code DEFAULT_K = 5} olup
+ * örnek sayısına göre {@code min(5, örnek sayısı)} olarak daraltılır. Tek sınıflı eğitimde
+ * model kurmaz. Üye metodlar {@code synchronized} olduğundan sınıf thread-safe'tir.
  */
 public final class KnnStrategy implements ModelStrategy {
 
-    /** Varsayılan komşu sayısı (5). Skor eşiklerinin yuvarlanmasında da kullanılır
-     *  (bkz. {@code ScoreGate}). */
     public static final int DEFAULT_K = 5;
 
     private KNN<double[]> model;
     private ClassSpace classes;
 
     /**
-     * k-NN modelini verilen öznitelik matrisi ve etiketlerle eğitir.
+     * Eğitir: k-NN modelini komşu tabanlı öğrenme için eğitim seti üzerinde kurar.
      *
-     * @param features {@code double[N][11]} eğitim verisi
-     * @param labels   {@code int[N]} etiketler (0=AL, 1=SAT, 2=TUT)
+     * <p>Önce sınıfları {@link ClassSpace} ile sıkıştırır; tek sınıf varsa SMILE'ın tek
+     * sınıflı eğitim hatasını önlemek için model kurmaz. Komşu sayısı
+     * {@code min(DEFAULT_K = 5, örnek sayısı)} olarak ayarlanır.
+     *
+     * @param features eğitim seti öznitelik matrisi ({@code double[N][11]})
+     * @param labels   eğitim seti etiketleri ({@code int[N]}; 0=AL, 1=SAT, 2=TUT)
      */
     @Override
     public synchronized void train(double[][] features, int[] labels) {
@@ -38,12 +39,14 @@ public final class KnnStrategy implements ModelStrategy {
     }
 
     /**
-     * Bir öznitelik vektörü için sınıf tahmini ve olasılık skoru döndürür.
+     * Tahmin eder: en yakın komşuların oylamasından kazanan sınıfı ve olasılığını döndürür.
+     *
+     * <p>Eğitilmemişse (sınıf tablosu yoksa) {@code {TUT, 0.0}} döner; tek sınıflı eğitimde
+     * o sınıfı güven {@code 1.0} ile döner. Aksi halde komşu oylamasının olasılık dağılımı
+     * doldurulur, kazanan sınıf ve o sınıfın olasılık değeri iki elemanlı dizi olarak verilir.
      *
      * @param features 11 boyutlu öznitelik vektörü
-     * @return {@code [sınıf, skor]} — sınıf: 0=AL, 1=SAT, 2=TUT;
-     *         henüz eğitim yapılmamışsa {@code [TUT, 0.0]},
-     *         tek sınıflı eğitimde {@code [gözlenen sınıf, 1.0]}
+     * @return 2 elemanlı dizi: {@code [sınıf etiketi, olasılık/skor]}
      */
     @Override
     public synchronized double[] predict(double[] features) {
@@ -56,6 +59,11 @@ public final class KnnStrategy implements ModelStrategy {
         return new double[]{classes.label(cls), prob[cls]};
     }
 
+    /**
+     * Bildirir: stratejinin {@link ModelType#KNN} türünde olduğunu döndürür.
+     *
+     * @return model türü ({@link ModelType#KNN})
+     */
     @Override
     public ModelType type() {
         return ModelType.KNN;

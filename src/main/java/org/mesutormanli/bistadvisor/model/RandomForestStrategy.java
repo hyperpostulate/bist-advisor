@@ -11,29 +11,35 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Random Forest sınıflandırma stratejisi (one-vs-rest).
- * <p>
- * Eğitim etiketlerinde <strong>gözlenen</strong> her sınıf için ayrı bir ikili Random Forest
- * modeli eğitilir. Etiketler {@link ClassSpace} ile sıkı indekslere eşlenir; eğitim setinde hiç
- * oluşmayan sınıf için ikili model eğitilmez ve tahminde istisna fırlatılmaz. Tek sınıf varsa
- * model eğitilmez, sabit tahmin döner.
- * <p>
- * Tahmin aşamasında modellerden en yüksek olasılık skoruna sahip sınıf seçilir. SMILE
- * kütüphanesinin {@link RandomForest} sınıfını kullanır.
+ * Rastgele orman (Random Forest) sınıflandırma stratejisi; one-vs-all yaklaşımı ve SMILE
+ * {@link RandomForest} modelini kullanır.
+ *
+ * <p>Eğitimde etiketler {@link ClassSpace} ile sıkı indekslere sıkıştırılır; eğitim setinde hiç
+ * oluşmayan sınıf için ikili orman kurulmaz ve tahminde istisna fırlatılmaz. Gözlenen her sınıf
+ * için ayrı bir ikili rastgele orman eğitilir: hedef kolon adı {@code sinif} olup hedef sınıf
+ * örnekleri {@code 1}, diğerleri {@code 0} ile etiketlenir. Modeller SMILE {@code DataFrame} ve
+ * {@code Formula.lhs("sinif")} ile kurulur; öznitelik kolon adları
+ * {@link FeatureFrame#names()} (11 öznitelik) ile sağlanır. Tek sınıflı eğitimde model kurmaz.
+ * Üye metodlar {@code synchronized} olduğundan sınıf thread-safe'tir.
  */
 public final class RandomForestStrategy implements ModelStrategy {
     private final List<RandomForest> forests = new ArrayList<>();
 
-    /** Yalnızca öznitelik kolonlarını içeren şema (etiket kolonu hariç). */
     private StructType schema;
 
     private ClassSpace classes;
 
     /**
-     * Gözlenen her sınıf için bir ikili Random Forest modeli eğitir (one-vs-rest).
+     * Eğitir: gözlenen her sınıf için one-vs-all ikili rastgele ormanları eğitim seti üzerinde
+     * kurar.
      *
-     * @param features {@code double[N][11]} eğitim verisi
-     * @param labels   {@code int[N]} etiketler (0=AL, 1=SAT, 2=TUT)
+     * <p>Her ikili modelde hedef kolon {@code sinif} adıyla eklenir ve hedef sınıf örnekleri
+     * {@code 1}, diğerleri {@code 0} ile etiketlenir; ormanlar
+     * {@code Formula.lhs("sinif")} ile eğitilir. Ayrıca tahmin için yalnızca öznitelik
+     * kolonlarını içeren şema saklanır. Tek sınıf varsa model kurulmaz.
+     *
+     * @param features eğitim seti öznitelik matrisi ({@code double[N][11]})
+     * @param labels   eğitim seti etiketleri ({@code int[N]}; 0=AL, 1=SAT, 2=TUT)
      */
     @Override
     public synchronized void train(double[][] features, int[] labels) {
@@ -52,12 +58,16 @@ public final class RandomForestStrategy implements ModelStrategy {
     }
 
     /**
-     * İkili Random Forest modellerini çalıştırır ve en yüksek skorlu sınıfı döndürür.
+     * Tahmin eder: ikili ormanların pozitif sınıf olasılıklarını karşılaştırıp en yüksek
+     * olasılıklı sınıfı döndürür.
+     *
+     * <p>Öznitelik vektörü şemayla bir {@code Tuple} olarak paketlenir; her ikili ormandan
+     * 2 sınıf olasılığı alınır ve pozitif sınıf olasılığı ({@code prob[1]}) en yüksek olan
+     * sınıf kazanır. Eğitilmemişse {@code {TUT, 0.0}}; tek sınıflı eğitimde
+     * {@code {o sınıf, 1.0}} döner.
      *
      * @param features 11 boyutlu öznitelik vektörü
-     * @return {@code [sınıf, skor]} — sınıf: 0=AL, 1=SAT, 2=TUT;
-     *         henüz eğitim yapılmamışsa {@code [TUT, 0.0]},
-     *         tek sınıflı eğitimde {@code [gözlenen sınıf, 1.0]}
+     * @return 2 elemanlı dizi: {@code [sınıf etiketi, olasılık/skor]}
      */
     @Override
     public synchronized double[] predict(double[] features) {
@@ -81,6 +91,11 @@ public final class RandomForestStrategy implements ModelStrategy {
         return new double[]{classes.label(best), bestScore};
     }
 
+    /**
+     * Bildirir: stratejinin {@link ModelType#RANDOM_FOREST} türünde olduğunu döndürür.
+     *
+     * @return model türü ({@link ModelType#RANDOM_FOREST})
+     */
     @Override
     public ModelType type() { return ModelType.RANDOM_FOREST; }
 }

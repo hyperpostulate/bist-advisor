@@ -22,14 +22,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Yahoo Finance API'den hisse senedi fiyat ve temel verilerini çeken HTTP istemcisi.
+ * Yahoo Finance REST uçlarından günlük fiyat ve temel gösterge verilerini çeken HTTP istemcisi.
  * <p>
- * İsteklerde crumb-tabanlı kimlik doğrulama kullanılır; 401 hatası durumunda crumb
- * yenilenir ve URL her denemede <em>yeniden kurulur</em>.
- * 429 (rate-limit) ve 5xx hatalarında üstel geri çekilme (exponential backoff) uygulanır;
- * tüm istekler {@code bist.scrape.delay-ms} ile throttling'e tabidir.
- * Temel veriler günlük TTL ile bellekte önbelleklenir; böylece eğitim ve tahmin
- * aynı sembol için veri çekimini tekrarlamaz.
+ * Günlük fiyatlar v8 chart ucundan ({@code range=1y&interval=1d}), temel göstergeler ise v10
+ * quoteSummary ucunun {@code summaryDetail}, {@code defaultKeyStatistics}, {@code financialData} ve
+ * {@code price} modülleriyle alınır. Yetkilendirme oturum çerezi ve crumb ile yapılır; 401 yanıtlarında
+ * crumb/çerez sıfırlanır, 429 ve 5xx yanıtlarında üstel geri çekilme uygulanır. İstekler arası gecikme
+ * {@code bist.scrape.delay-ms} (varsayılan 250 ms), istek zaman aşımı ise {@code bist.scrape.timeout-ms}
+ * (varsayılan 15 sn) ile belirlenir. Temel göstergeler gün bazlı bellek içi önbellekte tutulur.
  */
 @Component
 public class YahooClient {
@@ -41,11 +41,9 @@ public class YahooClient {
     private static final String COOKIE_URL = "https://fc.yahoo.com";
     private static final int MAX_RETRIES = 3;
 
-    /** İstekler arası minimum gecikme (ms) — {@code bist.scrape.delay-ms}. */
     @org.springframework.beans.factory.annotation.Value("${bist.scrape.delay-ms:250}")
     private long requestDelayMs = 250;
 
-    /** HTTP istek zaman aşımı (ms) — {@code bist.scrape.timeout-ms}. */
     @org.springframework.beans.factory.annotation.Value("${bist.scrape.timeout-ms:15000}")
     private long requestTimeoutMs = 15000;
 
@@ -55,12 +53,17 @@ public class YahooClient {
     private volatile String crumb;
     private volatile String sessionCookie;
 
-    /** Günlük TTL ile önbelleklenen temel veri kaydı. */
+    /**
+     * Gün bazlı temel gösterge önbelleği girişi: {@code day} önbelleğin geçerli olduğu tarihi,
+     * {@code fundamentals} o gün alınan temel göstergeleri taşır.
+     *
+     * @param day          önbelleğin geçerli olduğu tarih
+     * @param fundamentals o gün alınan temel göstergeler
+     */
     private record CachedFundamentals(LocalDate day, Fundamentals fundamentals) {}
 
     /**
-     * {@code YahooClient} HTTP istemcisini kurar. Bağlantı zaman aşımı 15 saniye
-     * olarak ayarlanır ve yönlendirmelere izin verilir.
+     * Kurar ve bağlantı zaman aşımı 15 saniye olan, yönlendirmeleri izleyen HTTP istemcisini hazırlar.
      */
     public YahooClient() {
         this.http = HttpClient.newBuilder()
@@ -70,28 +73,25 @@ public class YahooClient {
     }
 
     /**
-     * Temel veri (F/K, PD/DD, temettü verimi, büyüme, özkaynak karlılığı) taşıyan
-     * veri kaydı.
+     * Temel gösterge kümesi: F/K, PD/DD, temettü verimi, kâr büyümesi ve özkaynak kârlılığı (ROE).
+     * <p>
+     * Veri alınamadığını temsil eden {@link #EMPTY} örneği tüm bileşenlerinde 0 taşır.
      *
-     * @param fk            Fiyat/Kazanç oranı (trailing PE veya forward PE)
-     * @param pdDd          PD/DD oranı (Price to Book)
+     * @param fk            F/K oranı ({@code trailingPE}; ≤ 0 ise {@code forwardPE})
+     * @param pdDd          PD/DD oranı
      * @param dividendYield temettü verimi
-     * @param profitGrowth  kâr büyüme oranı (earningsGrowth veya revenueGrowth)
-     * @param roe           özkaynak karlılığı (Return on Equity)
+     * @param profitGrowth  kâr büyümesi ({@code earningsGrowth}; 0 ise {@code revenueGrowth})
+     * @param roe           özkaynak kârlılığı (ROE)
      */
     public record Fundamentals(double fk, double pdDd, double dividendYield, double profitGrowth, double roe) {
-        /**
-         * Hiçbir veri alınamadığında kullanılacak boş (sıfır) fundamentals kaydı.
-         */
         public static final Fundamentals EMPTY = new Fundamentals(0, 0, 0, 0, 0);
     }
 
     /**
-     * Bir BIST sembolünü Yahoo Finance formatına dönüştürür (ör. {@code "AKBNK"} ->
-     * {@code "AKBNK.IS"}). Eğer sembol zaten nokta içeriyorsa olduğu gibi döndürülür.
+     * Sembolü Yahoo Finance sembolüne dönüştürür: nokta içermeyen sembole {@code .IS} (BIST) eki eklenir.
      *
-     * @param symbol yerel hisse sembolü
-     * @return Yahoo Finance sembolü ({@code SEMBOL.IS})
+     * @param symbol yerel hisse/endeks sembolü
+     * @return Yahoo Finance sembolü; sembol nokta içeriyorsa olduğu gibi döner
      */
     public static String yahooSymbol(String symbol) {
         String s = symbol.toUpperCase().trim();
@@ -100,10 +100,10 @@ public class YahooClient {
     }
 
     /**
-     * Yahoo Finance'den 1 yıllık günlük fiyat verisini çeker.
+     * Sembol için son 1 yıllık günlük fiyatları v8 chart ucundan ({@code range=1y&interval=1d}) çeker.
      *
-     * @param symbol hisse sembolü
-     * @return kapanış fiyatı ve hacim içeren {@link Bar} listesi
+     * @param symbol hisse/endeks sembolü
+     * @return kapanış ve hacim içeren {@link Bar} listesi; hata veya 200 dışı yanıtta boş liste
      */
     public List<Bar> fetchPrices(String symbol) {
         String url = String.format(PRICE_URL, yahooSymbol(symbol));
@@ -118,11 +118,13 @@ public class YahooClient {
     }
 
     /**
-     * Yahoo Finance'den temel verileri (F/K, PD/DD, temettü vb.) çeker. Sonuç gün
-     * bazlı TTL ile önbelleklenir; aynı gün içinde ikinci istek ağa çıkmaz.
+     * Sembol için temel göstergeleri (F/K, PD/DD, temettü verimi, kâr büyümesi, ROE) v10
+     * quoteSummary ucundan çeker.
+     * <p>
+     * Sonuçlar gün bazlı bellek içi önbellekte tutulur; aynı gün içindeki tekrarlı çağrılar ağa çıkmaz.
      *
      * @param symbol hisse sembolü
-     * @return {@link Fundamentals} kaydı, hata durumunda {@link Fundamentals#EMPTY}
+     * @return temel göstergeler; hata durumunda {@link Fundamentals#EMPTY}
      */
     public Fundamentals fetchFundamentals(String symbol) {
         String ysym = yahooSymbol(symbol);
@@ -144,11 +146,13 @@ public class YahooClient {
     }
 
     /**
-     * Yahoo Finance API için gerekli crumb (güvenlik anahtarı) ve oturum çerezini
-     * alır. İlk çağrıda çerez ve crumb alınır; sonraki çağrılarda önbellekten
-     * kullanılır.
+     * Oturum çerezini ve crumb değerini alarak istek yetkilendirmesini hazırlar.
+     * <p>
+     * Senkronize çalışır; crumb zaten alınmışsa yeni istek yapılmaz. Crumb isteği
+     * HTTP 200 ve boş olmayan gövde ister.
      *
-     * @throws Exception crumb alınamazsa
+     * @throws Exception çerez veya crumb isteği ağ hatasıyla sonuçlanırsa
+     * @throws IllegalStateException crumb isteği HTTP 200 dönmez veya gövde boşsa
      */
     private synchronized void ensureCrumb() throws Exception {
         if (crumb != null) return;
@@ -168,8 +172,10 @@ public class YahooClient {
     }
 
     /**
-     * İstekler arası throttle gecikmesi uygular ({@code bist.scrape.delay-ms});
-     * Yahoo rate-limit cezalarını (429) önlemeye yardım eder.
+     * İstekler arasına {@code bist.scrape.delay-ms} kadar gecikme koyar (varsayılan 250 ms).
+     *
+     * @implNote Gecikme sıfır/negatifse bekleme yapılmaz; kesintiye uğrarsa iş parçacığının
+     *           kesme durumu korunur.
      */
     private void throttle() {
         if (requestDelayMs <= 0) return;
@@ -181,11 +187,11 @@ public class YahooClient {
     }
 
     /**
-     * HTTP yanıt başlıklarından {@code Set-Cookie} değerlerini ayıklar ve
-     * {@code "ad=deger; ad2=deger2"}} formatında bir çerez dizesi oluşturur.
+     * Yanıt başlıklarındaki {@code Set-Cookie} değerlerini birleştirip isteklerde kullanılacak
+     * çerez dizesini oluşturur ({@code "ad=deger; ad2=deger2"} biçimi).
      *
-     * @param headers HTTP yanıt başlıkları
-     * @return birleştirilmiş çerez dizesi
+     * @param headers HTTP yanıtı başlıkları
+     * @return birleştirilmiş çerez dizesi; uygun başlık yoksa boş dize
      */
     private String cookieString(java.net.http.HttpHeaders headers) {
         StringBuilder sb = new StringBuilder();
@@ -203,15 +209,16 @@ public class YahooClient {
     }
 
     /**
-     * HTTP GET isteği gönderir. Crumb gerektiren isteklerde URL <strong>her denemede
-     * güncel crumb ile yeniden kurulur</strong>; 401 hatasında crumb/çerez yenilenir ve
-     * istek taze crumb'la tekrarlanır. 429 ve 5xx
-     * hatalarında üstel geri çekilme (exponential backoff) uygulanır.
+     * HTTP GET isteğini en fazla 3 denemede gönderir.
+     * <p>
+     * 200 yanıtı olduğu gibi döner. 401'de crumb/çerez sıfırlanıp yeniden denenir. 429 ve 5xx
+     * yanıtlarında 500 ms ile başlayan ve her denemede ikiye katlanan üstel geri çekilme
+     * uygulanır; diğer durum kodları aynen döndürülür. Denemeler tükenirse {@code null} döner.
      *
      * @param url       istek URL'si (crumb parametresi hariç)
-     * @param withCrumb crumb parametresi eklensin mi?
-     * @return HTTP yanıtı, maksimum deneme sonrası hata durumunda {@code null}
-     * @throws Exception istek sırasında oluşan hata
+     * @param withCrumb isteğin crumb ve oturum çereziyle yetkilendirilip yetkilendirilmeyeceği
+     * @return HTTP yanıtı; tüm denemeler sonuçsuz kalırsa {@code null}
+     * @throws Exception istek gönderilirken ağ veya kesinti hatası olursa
      */
     private HttpResponse<String> get(String url, boolean withCrumb) throws Exception {
         long backoff = 500;
@@ -231,7 +238,6 @@ public class YahooClient {
             int code = res.statusCode();
             if (code == 200) return res;
             if (code == 401 && withCrumb) {
-                // taze crumb alınsın; sonraki denemede URL yeniden kurulacak
                 crumb = null;
                 sessionCookie = null;
                 continue;
@@ -247,11 +253,13 @@ public class YahooClient {
     }
 
     /**
-     * Yahoo Finance JSON yanıtından fiyat çubuklarını ayrıştırır.
-     * Timestamp, close ve volume alanlarını okur; null değerler atlanır.
+     * v8 chart JSON gövdesinden fiyat çubuklarını ayrıştırır.
+     * <p>
+     * Epoch saniye cinsinden zaman damgaları {@link MarketTime#ZONE} (İstanbul) üzerinden tarihe
+     * çevrilir; kapanışı {@code null} olan çubuklar atlanır, hacim alanı yoksa 0 kullanılır.
      *
-     * @param json ham JSON dizesi
-     * @return ayrıştırılmış {@link Bar} listesi
+     * @param json v8 chart yanıt gövdesi
+     * @return {@link Bar} listesi; ayrıştırma hatasında boş liste
      */
     public List<Bar> parsePrices(String json) {
         List<Bar> bars = new ArrayList<>();
@@ -275,11 +283,15 @@ public class YahooClient {
     }
 
     /**
-     * Yahoo Finance JSON yanıtından temel verileri ayrıştırır.
-     * F/K, PD/DD, temettü verimi, özkaynak karlılığı ve büyüme oranlarını okur.
+     * v10 quoteSummary JSON gövdesinden temel göstergeleri ayrıştırır.
+     * <p>
+     * F/K için {@code trailingPE}, ≤ 0 ise {@code forwardPE}; kâr büyümesi için
+     * {@code earningsGrowth}, 0 ise {@code revenueGrowth} okunur. PD/DD, temettü verimi ve
+     * özkaynak kârlılığı (ROE) ilgili modüllerin {@code raw} alanlarından alınır.
      *
-     * @param json ham JSON dizesi
-     * @return ayrıştırılmış {@link Fundamentals} kaydı
+     * @param json v10 quoteSummary yanıt gövdesi
+     * @return temel göstergeler; ayrıştırma hatasında {@link Fundamentals#EMPTY}
+     * @implNote Paket görünürlüklüdür ve testlerde doğrudan çağrılır.
      */
     Fundamentals parseFundamentals(String json) {
         try {
@@ -299,13 +311,12 @@ public class YahooClient {
     }
 
     /**
-     * JSON ağacında {@code parent.section.field.raw} yolundaki sayısal değeri döndürür.
-     * Değer sayı değilse ya da yol yoksa {@code 0.0} döner.
+     * JSON bölümündeki alanın {@code raw} sayısal değerini okur.
      *
-     * @param parent  kök JSON düğümü
-     * @param section bölüm adı (ör. {@code "summaryDetail"})
-     * @param field   alan adı (ör. {@code "trailingPE"})
-     * @return sayısal değer veya 0.0
+     * @param parent  üst JSON düğümü
+     * @param section modül adı (ör. {@code summaryDetail})
+     * @param field   alan adı (ör. {@code trailingPE})
+     * @return {@code raw} değer; sayısal değilse {@code 0.0}
      */
     private double node(JsonNode parent, String section, String field) {
         JsonNode n = parent.path(section).path(field).path("raw");

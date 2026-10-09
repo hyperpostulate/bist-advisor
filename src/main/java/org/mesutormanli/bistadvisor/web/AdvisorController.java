@@ -17,15 +17,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * REST API denetleyicisi. Web arayüzüne portföy yönetimi, analiz ve onay
- * işlemleri için HTTP uç noktaları sunar.
+ * Tek sayfalık arayüzün ({@code static/index.html}) kullandığı REST yüzeyini sunan denetleyici.
  * <p>
- * Tüm uç noktalar {@code /api} ön eki altındadır.
+ * Tüm uç noktalar {@code /api} altındadır: {@code GET /api/config},
+ * {@code GET /api/portfolio}, {@code GET /api/portfolio-view}, {@code POST /api/portfolio},
+ * {@code POST /api/analyze}, {@code POST /api/confirm} ve {@code GET /api/pending}.
+ * Semboller {@code [A-Z0-9]{1,15}} deseniyle doğrulanır.
  */
 @RestController
 @RequestMapping("/api")
 public class AdvisorController {
-    /** Geçerli hisse sembolü biçimi (BIST kodları: harf/rakam). */
     private static final java.util.regex.Pattern SYMBOL_PATTERN =
             java.util.regex.Pattern.compile("[A-Z0-9]{1,15}");
 
@@ -34,7 +35,11 @@ public class AdvisorController {
     private final BistIndices bistIndices;
 
     /**
-     * {@code AdvisorController} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     * Denetleyiciyi bağımlılıklarıyla kurar.
+     *
+     * @param portfolioService portföyün bellek içi sahibi ve durum dosyası (state.yaml) kalıcılığı
+     * @param dailyAdvisor     günlük analiz ve öneri üreticisi
+     * @param bistIndices      BIST endeks kataloğu (endeks adı doğrulaması için)
      */
     public AdvisorController(PortfolioService portfolioService, DailyAdvisor dailyAdvisor,
                             BistIndices bistIndices) {
@@ -44,10 +49,12 @@ public class AdvisorController {
     }
 
     /**
-     * Uygulama yapılandırmasını döndürür: mevcut modlar, modeller, endeksler
-     * ve seçili değerler.
+     * Yapılandırmayı döndürür: modeller, modlar ve endeks listesi ile aktif seçimler.
+     * <p>
+     * REST uç noktası: {@code GET /api/config}.
      *
-     * @return yapılandırma haritası
+     * @return liste ve aktif seçimleri ({@code currentMode}, {@code currentModel},
+     *         {@code currentIndex}) içeren harita
      */
     @GetMapping("/config")
     public Map<String, Object> config() {
@@ -67,21 +74,24 @@ public class AdvisorController {
     }
 
     /**
-     * Portföy durumunu döndürür.
+     * Ham portföy durumunu döndürür.
+     * <p>
+     * REST uç noktası: {@code GET /api/portfolio}.
      *
-     * @return {@link PortfolioState} nesnesi
+     * @return durum dosyası (state.yaml) ile aynı {@link PortfolioState}
      */
     @GetMapping("/portfolio")
     public PortfolioState portfolio() { return portfolioService.getState(); }
 
     /**
-     * Portföyün görselleştirme için zenginleştirilmiş görünümünü döndürür:
-     * her pozisyon için güncel fiyat, kâr/zarar bilgileri ve toplam değerler.
-     * Fiyat verisi alınamayan pozisyonlarda {@code currentPrice}/{@code pnlPct}/
-     * {@code pnlTl} alanları {@code null} döner (sahte fiyat üretilmez) ve sembol
-     * {@code missingPrices} listesinde yer alır.
+     * Pozisyon başına kâr/zarar görünümünü döndürür.
+     * <p>
+     * REST uç noktası: {@code GET /api/portfolio-view}. Her satırda maliyet, anlık değer
+     * ve kâr/zarar (TL ve %) verilir; ayrıca toplam yatırılan, toplam anlık değer,
+     * özkaynak (nakit + anlık değer) ve fiyatı çekilemeyen semboller ({@code missingPrices})
+     * döndürülür. Fiyatı olmayan pozisyonda kâr alanları {@code null} olur.
      *
-     * @return portföy görünüm haritası
+     * @return pozisyon satırlarını ve toplamları içeren harita
      */
     @GetMapping("/portfolio-view")
     public Map<String, Object> portfolioView() {
@@ -129,16 +139,17 @@ public class AdvisorController {
     }
 
     /**
-     * Portföy durumunu günceller (toplam sermaye, mod, model, endeks, pozisyonlar).
-     * Gelen veri yapısal olarak geçersizse hiçbir şey yazılmaz ve
-     * {@code {"status":"error"}} döndürülür. Nakit, güncellemeyle mutabakata geçirilir:
-     * sermaye farkı para yatırma/çekme, pozisyon farkı ise maliyet kadar nakit hareketi
-     * sayılır (bkz. {@code PortfolioService.updatePortfolio}). İhmal edilebilir iş kuralları
-     * ihlalinde (ör. negatif nakit) kayıt yapılır ve {@code {"status":"warning"}}
-     * döndürülür.
+     * Gelen portföy taslağını doğrulayıp kaydeder.
+     * <p>
+     * REST uç noktası: {@code POST /api/portfolio}. Önce {@link #structuralErrors} ile
+     * yapısal doğrulama yapılır; hata varsa yanıt {@code {"status":"error","message":...}}
+     * olur ve portföy KAYDEDİLMEZ. Geçerliyse {@link PortfolioService#updatePortfolio}
+     * ile kaydedilir (endeks adı yalnızca {@link BistIndices} içinde varsa kabul edilir);
+     * ardından {@link PortfolioService#validatePortfolio} sonucuna göre durum
+     * {@code warning} veya {@code ok} olur.
      *
-     * @param incoming yeni portföy durumu
-     * @return işlem sonucu ({@code status: ok/warning/error})
+     * @param incoming istemciden gelen portföy taslağı
+     * @return durumu ve gerekirse uyarı mesajını içeren harita
      */
     @PostMapping("/portfolio")
     public Map<String, String> savePortfolio(@RequestBody PortfolioState incoming) {
@@ -168,12 +179,14 @@ public class AdvisorController {
     }
 
     /**
-     * Gelen portföy durumu için yapısal doğrulama yapar: sembol biçimi, pozitif lot,
-     * geçerli maliyet ve pozitif/sonlu sermaye. Uygulama tarafında {@code NaN}/{@code Infinity}
-     * üretebilecek verileri (ör. sıfır maliyet) engeller.
+     * Portföy taslağının yapısal doğrulama hatalarını toplar.
+     * <p>
+     * Kurallar: bütçe sonlu ve ≥ 0 olmalı; pozisyonda sembol boş olamaz ve
+     * {@code [A-Z0-9]{1,15}} desenine uymalı; lot > 0 olmalı; ortalama maliyet sonlu
+     * ve > 0 olmalı.
      *
-     * @param incoming istek gövdesindeki portföy durumu
-     * @return hata mesajları; boşsa girdi geçerlidir
+     * @param incoming doğrulanacak portföy taslağı
+     * @return hata mesajları listesi (hata yoksa boş)
      */
     private List<String> structuralErrors(PortfolioState incoming) {
         List<String> errors = new ArrayList<>();
@@ -201,29 +214,40 @@ public class AdvisorController {
     }
 
     /**
-     * Günlük analizi çalıştırır ve sonucu döndürür.
+     * Taze günlük analizi çalıştırıp sonucu döndürür.
+     * <p>
+     * REST uç noktası: {@code POST /api/analyze}.
      *
-     * @return {@link AnalysisResult} nesnesi
+     * @return önerileri ve uyarıları içeren analiz sonucu
      */
     @PostMapping("/analyze")
     public AnalysisResult analyze() { return dailyAdvisor.analyze(); }
 
     /**
-     * Onaylanmış bir işlemi temsil eden istek gövdesi kaydı.
+     * Tek bir işlemin REST gövdesindeki gösterimi.
+     * <p>
+     * Bileşenler: {@code symbol} işlem gören hisse sembolü; {@code action} işlem türü
+     * ({@code AL}/{@code SAT}); {@code lots} işlem lot sayısı; {@code price} işlem
+     * fiyatı (TL).
      *
      * @param symbol hisse sembolü
-     * @param action işlem türü (AL/SAT)
-     * @param lots   lot miktarı
-     * @param price  işlem fiyatı
+     * @param action işlem türü ({@code AL} veya {@code SAT})
+     * @param lots   işlem lot sayısı
+     * @param price  işlem fiyatı (TL)
      */
     public record ConfirmReq(String symbol, String action, int lots, double price) {}
 
     /**
-     * Bir liste onaylanmış işlemi portföye uygular. Her işlem anında diske yazılır;
-     * gerçekleşen kâr/zarar nakde yansır.
+     * Toplu işlemi uygular.
+     * <p>
+     * REST uç noktası: {@code POST /api/confirm}. Gövdedeki
+     * {@code [{symbol, action, lots, price}]} listesi sırayla
+     * {@link PortfolioService#applyTransaction} ile işlenir. Yanıt
+     * {@code {"status":"ok"}} ile birlikte uygulanan ({@code applied}) ve reddedilen
+     * ({@code failed}) işlem sayılarını içerir.
      *
-     * @param reqs onaylanmış işlem listesi
-     * @return işlem sonucu (uygulanan/başarısız sayıları)
+     * @param reqs uygulanacak işlem listesi
+     * @return uygulanan ve reddedilen işlem sayılarını içeren yanıt haritası
      */
     @PostMapping("/confirm")
     public Map<String, String> confirm(@RequestBody List<ConfirmReq> reqs) {
@@ -244,9 +268,12 @@ public class AdvisorController {
     }
 
     /**
-     * Bekleyen işlemleri döndürür: satış önerileri ve alım önerileri.
+     * Bekleyen uygulanabilir önerileri döndürür.
+     * <p>
+     * REST uç noktası: {@code GET /api/pending}. Taze bir analiz çalıştırılır ve yalnızca
+     * uygulanabilir SAT ve AL önerileri harita listesine dönüştürülür; TUT önerileri elenir.
      *
-     * @return bekleyen işlem listesi
+     * @return öneri haritalarının listesi
      */
     @GetMapping("/pending")
     public List<Map<String, Object>> pending() {
@@ -262,10 +289,11 @@ public class AdvisorController {
     }
 
     /**
-     * Bir {@link Recommendation} nesnesini haritaya dönüştürür.
+     * Bir öneriyi API harita gösterimine dönüştürür.
      *
-     * @param r öneri kaydı
-     * @return harita temsili
+     * @param r dönüştürülecek öneri
+     * @return {@code index}, {@code symbol}, {@code action}, {@code lots}, {@code price},
+     *         {@code score} ve {@code note} anahtarlarını içeren harita
      */
     private Map<String, Object> toMap(Recommendation r) {
         Map<String, Object> m = new HashMap<>();

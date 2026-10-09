@@ -15,10 +15,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * BIST endeks tanımlarını {@code bist-indices.properties} dosyasından yükler
- * ve endeks adına göre sembol listelerine erişim sağlar.
+ * BIST endeks tanımlarını {@code classpath:bist-indices.properties} dosyasından yükleyen ve
+ * endeks adına göre sembol listelerine erişim sağlayan bileşen.
  * <p>
- * Her satır {@code ENDEKS_ADI=SEMBOL1,SEMBOL2,...} formatındadır.
+ * Satır biçimi {@code ENDEKS=SEMBOL1,SEMBOL2,...} şeklindedir; boş satırlar ve {@code #} ile
+ * başlayan yorum satırları atlanır. Endeks adları ve semboller büyük harfe çevrilerek saklanır,
+ * endeksler dosyadaki görünme sırasıyla korunur.
  */
 @Component
 public class BistIndices {
@@ -29,10 +31,12 @@ public class BistIndices {
     private final Map<String, List<String>> indices = new LinkedHashMap<>();
 
     /**
-     * {@code bist-indices.properties} dosyasını okur ve endeksleri belleğe yükler.
-     * Boş satırlar ve {@code #} ile başlayan yorumlar atlanır.
+     * Endeks tanım dosyasını okur ve endeks → sembol eşlemelerini belleğe yükler.
+     * <p>
+     * Spring bileşeni oluşturulunca {@code @PostConstruct} ile otomatik çağrılır.
      *
-     * @throws IOException dosya okunamazsa fırlatılır
+     * @throws IOException sınıf yolu kaynağı açılamaz veya okuma hatası olursa
+     * @implNote Boş semboller listeye eklenmez; hiç sembol içermeyen satırlar yok sayılır.
      */
     @PostConstruct
     void load() throws IOException {
@@ -56,15 +60,17 @@ public class BistIndices {
     }
 
     /**
-     * Tüm endeks adlarının bir kopyasını döndürür.
+     * Tanımlı tüm endeks adlarını döndürür.
+     *
+     * @return görünme sırasını koruyan, değiştirilemez endeks adı listesi
      */
     public List<String> indexNames() { return List.copyOf(indices.keySet()); }
 
     /**
-     * Belirtilen endekse ait hisse senedi sembollerini döndürür.
+     * Endekse ait hisse sembollerini döndürür; arama büyük/küçük harfsizdir.
      *
-     * @param indexName endeks adı (case-insensitive)
-     * @return sembol listesi, endeks bulunamazsa boş liste
+     * @param indexName endeks adı ({@code null} olabilir)
+     * @return endeksin sembol listesi; endeks bilinmiyorsa veya {@code indexName} {@code null} ise boş liste
      */
     public List<String> symbolsOf(String indexName) {
         if (indexName == null) return List.of();
@@ -73,10 +79,10 @@ public class BistIndices {
     }
 
     /**
-     * Belirtilen endeks adının tanımlı olup olmadığını kontrol eder.
+     * Endeks adının tanımlı olup olmadığını belirler; arama büyük/küçük harfsizdir.
      *
-     * @param indexName endeks adı
-     * @return {@code true} eğer endeks tanımlıysa
+     * @param indexName endeks adı ({@code null} olabilir)
+     * @return endeks tanımlıysa {@code true}; bilinmiyor veya {@code null} ise {@code false}
      */
     public boolean containsIndex(String indexName) {
         if (indexName == null) return false;

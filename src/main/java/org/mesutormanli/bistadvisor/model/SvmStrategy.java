@@ -8,26 +8,30 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Destek Vektör Makinesi (SVM) sınıflandırma stratejisi (Gaussian kernel).
- * <p>
- * Eğitim etiketlerinde <strong>gözlenen</strong> her sınıf için ayrı bir ikili SVM modeli
- * eğitilir (one-vs-rest). Etiketler {@link ClassSpace} ile sıkı indekslere eşlenir; eğitim
- * setinde hiç oluşmayan sınıf için ikili model eğitilmez ve tahminde istisna fırlatılmaz
- * (eksik sınıf hiç tahmin edilmez). Tek sınıf varsa model eğitilmez, sabit tahmin döner.
- * <p>
- * Tahmin aşamasında karar fonksiyonu değeri sigmoid ile {@code [0, 1]} aralığına dönüştürülür
- * ve en yüksek skorlu sınıf seçilir. SMILE kütüphanesinin {@link SVM} sınıfını kullanır.
+ * Destek vektör makinesi (SVM) sınıflandırma stratejisi; one-vs-all yaklaşımı ve SMILE
+ * {@link SVM} modelini kullanır.
+ *
+ * <p>Eğitimde etiketler {@link ClassSpace} ile sıkı indekslere sıkıştırılır; eğitim setinde hiç
+ * oluşmayan sınıf için ikili model kurulmaz ve tahminde istisna fırlatılmaz. Gözlenen her sınıf
+ * için ayrı bir ikili SVM eğitilir: hedef sınıf örnekleri {@code +1}, diğerleri {@code -1}
+ * etiketlenir. İkili modeller Gaussian çekirdek (σ=1.0) ve
+ * {@code SVM.Options(C=1.0, tol=1e-3, 100 iterasyon)} ile eğitilir. Tek sınıflı eğitimde model
+ * kurmaz. Üye metodlar {@code synchronized} olduğundan sınıf thread-safe'tir.
  */
 public final class SvmStrategy implements ModelStrategy {
     private final List<SVM<double[]>> binaries = new ArrayList<>();
     private ClassSpace classes;
 
     /**
-     * Gözlenen her sınıf için bir ikili SVM modeli eğitir (one-vs-rest).
-     * Gaussian kernel (sigma=1.0) ve C=1.0 düzenleme parametresi kullanılır.
+     * Eğitir: gözlenen her sınıf için one-vs-all ikili SVM'leri eğitim seti üzerinde kurar.
      *
-     * @param features {@code double[N][11]} eğitim verisi
-     * @param labels   {@code int[N]} etiketler (0=AL, 1=SAT, 2=TUT)
+     * <p>Her ikili sınıflandırıcıda hedef sınıf örnekleri {@code +1}, diğerleri {@code -1}
+     * olarak etiketlenir. Gaussian çekirdek (σ=1.0) kullanılır ve optimizasyon
+     * {@code SVM.Options(C=1.0, tol=1e-3, 100 iterasyon)} ile yürütülür. Tek sınıf varsa
+     * model kurulmaz.
+     *
+     * @param features eğitim seti öznitelik matrisi ({@code double[N][11]})
+     * @param labels   eğitim seti etiketleri ({@code int[N]}; 0=AL, 1=SAT, 2=TUT)
      */
     @Override
     public synchronized void train(double[][] features, int[] labels) {
@@ -44,13 +48,15 @@ public final class SvmStrategy implements ModelStrategy {
     }
 
     /**
-     * İkili SVM modellerinin karar değerlerini sigmoid ile olasılığa dönüştürür
-     * ve en yüksek skorlu sınıfı döndürür.
+     * Tahmin eder: ikili SVM karar skorlarına sigmoid uygulayıp en yüksek olasılıklı sınıfı
+     * döndürür.
+     *
+     * <p>Her ikili sınıflandırıcının karar skoruna {@code 1/(1+e^-decision)} sigmoid dönüşümü
+     * uygulanır; en yüksek olasılığa sahip sınıf ve olasılığı döndürülür. Eğitilmemişse
+     * {@code {TUT, 0.0}}; tek sınıflı eğitimde {@code {o sınıf, 1.0}} döner.
      *
      * @param features 11 boyutlu öznitelik vektörü
-     * @return {@code [sınıf, skor]} — sınıf: 0=AL, 1=SAT, 2=TUT;
-     *         henüz eğitim yapılmamışsa {@code [TUT, 0.0]},
-     *         tek sınıflı eğitimde {@code [gözlenen sınıf, 1.0]}
+     * @return 2 elemanlı dizi: {@code [sınıf etiketi, olasılık/skor]}
      */
     @Override
     public synchronized double[] predict(double[] features) {
@@ -73,6 +79,11 @@ public final class SvmStrategy implements ModelStrategy {
         return new double[]{classes.label(best), bestScore};
     }
 
+    /**
+     * Bildirir: stratejinin {@link ModelType#SVM} türünde olduğunu döndürür.
+     *
+     * @return model türü ({@link ModelType#SVM})
+     */
     @Override
     public ModelType type() {
         return ModelType.SVM;

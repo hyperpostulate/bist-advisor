@@ -12,13 +12,23 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Projenin temel birim testlerini içeren test sınıfı.
+ * Üretim yardımcılarının uçtan uca birim testleri: teknik gösterge hesaplama,
+ * makine öğrenmesi etiketleme ve Yahoo Finance JSON ayrıştırma.
  * <p>
- * Teknik gösterge hesaplamaları, etiketleme mantığı ve Yahoo Finance JSON
- * ayrıştırma işlemlerini test eder.
+ * Tüm seriler dosya içinde sentetik olarak üretilir; hiçbir test ağa çıkmaz ve
+ * gerçek piyasa verisine bağımlı değildir.
  */
 class BistAdvisorTest {
 
+    /**
+     * Sentetik OHLCV serisinden bar üretimi ve göstergelerin sınanması.
+     * <p>
+     * 100 TL'den başlayıp {@code (i % 5 - 2)} adımlarıyla hafif salınan 60 günlük
+     * kapanış serisi {@code tarih,0,0,0,kapanış,hacim} biçiminde CSV satırlarına
+     * çevrilir. Beklenen davranış: {@link TechnicalFeatures#toBars} 60 {@link Bar}
+     * üretir, 14 günlük {@link TechnicalFeatures#rsi} 0 ile 100 arasında kalır ve
+     * 20 günlük {@link TechnicalFeatures#volatility} negatif olmaz.
+     */
     @Test
     void technicalFeaturesFromSeries() {
         List<String> csv = new ArrayList<>();
@@ -36,8 +46,12 @@ class BistAdvisorTest {
     }
 
     /**
-     * {@link Labeler#labelFor} metodunun %100'ün üzerindeki getiride
-     * {@code BUY} etiketi döndürdüğünü doğrular.
+     * İleriye dönük fiyat sıçramasında etiketleyicinin AL sınıfını üretmesi.
+     * <p>
+     * 30 barlık düz 100 TL seride 25. indeksteki bar 200 TL'ye yükselir; örnek
+     * indeksi 20'den 5 bar ileriye bakıldığında getiri +%100 olur. Beklenen
+     * davranış: {@link Labeler#labelFor} %5 eşiğini aşan bu getiri için
+     * {@link Labeler#BUY} sınıfını döndürür.
      */
     @Test
     void labelerAssignsClasses() {
@@ -49,9 +63,12 @@ class BistAdvisorTest {
     }
 
     /**
-     * Yahoo Finance'den alınan örnek JSON yanıtının doğru şekilde
-     * {@link org.mesutormanli.bistadvisor.features.TechnicalFeatures.Bar Bar}
-     * nesnelerine ayrıştırıldığını doğrular.
+     * Gerçekçi Yahoo chart JSON gövdesinden kapanış ve hacimlerin ayrıştırılması.
+     * <p>
+     * İki zaman damgalı mum içeren {@code chart.result[0].indicators.quote[0]}
+     * metin bloğu beslenir. Beklenen davranış: {@link YahooClient#parsePrices}
+     * boş olmayan bir bar listesi döndürür, ilk barın kapanışı 240.5 ve hacmi
+     * 1200 olarak okunur; ikinci bar da aynı düzende listeye katılır.
      */
     @Test
     void priceScraperParsesYahooFixture() {

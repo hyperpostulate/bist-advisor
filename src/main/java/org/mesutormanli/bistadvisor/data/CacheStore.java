@@ -14,11 +14,11 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Hisse senedi fiyat verilerini CSV dosyaları halinde diskte önbelleğe alır.
+ * Hisse fiyat verilerini yapılandırılabilir dizinde (varsayılan {@code cache}) CSV dosyaları olarak önbellekler.
  * <p>
- * Her sembol için {@code price_SEMBOL.csv} formatında bir dosya tutulur.
- * Önbellek dizini {@code AppConfig.cacheDir()} ile belirlenir. Tazelik kontrolü
- * {@link MarketTime} üzerinden, hafta sonu/tatil toleranslı bir pencereyle yapılır.
+ * Her sembol için {@code price_SEMBOL.csv} dosyası tutulur; satır biçimi
+ * {@code tarih,kapanış,hacim}'dir. Tazelik kararı {@link MarketTime} üzerinden,
+ * 4 günlük tazelik penceresi kullanılarak verilir.
  */
 @Component
 public class CacheStore {
@@ -26,9 +26,10 @@ public class CacheStore {
     private final Path cacheDir;
 
     /**
-     * Önbellek dizinini oluşturur (yoksa).
+     * Kurar ve önbellek dizinini hazırlar.
      *
-     * @param appConfig uygulama yapılandırması
+     * @param appConfig önbellek dizinini belirleyen uygulama yapılandırması
+     * @implNote Yapılandırılan dizin (varsayılan {@code cache}) mevcut değilse oluşturulur.
      */
     public CacheStore(AppConfig appConfig) {
         this.cacheDir = Path.of(appConfig.cacheDir());
@@ -36,15 +37,14 @@ public class CacheStore {
     }
 
     /**
-     * Belirtilen hisse için önbellekte taze veri olup olmadığını kontrol eder.
+     * Sembolün önbellekte taze fiyat verisi tutup tutmadığını belirler.
      * <p>
-     * Tazelik kuralı: son bar'ın tarihi
-     * {@link MarketTime#isFreshEnough(LocalDate)} ile "bugün − 4 gün" penceresi içindeyse
-     * veri tazedir. Böylece hafta sonu/resmi tatilde (o gün barı oluşmayacakken) tüm
-     * seriler gereksiz yere yeniden indirilmez.
+     * Son satır biçimi {@code tarih,kapanış,hacim} kabul edilir; dosya yoksa, boşsa veya
+     * son satırın tarih alanı çözümlenemiyorsa sonuç {@code false}'tur. Aksi hâlde tarih
+     * {@link MarketTime#isFreshEnough(LocalDate)} ile 4 günlük tazelik penceresine göre sınanır.
      *
      * @param symbol hisse sembolü
-     * @return {@code true} eğer önbellek tazeyse
+     * @return önbellekteki son bar {@code bugün − 4} gününden eski değilse {@code true}
      */
     public boolean hasFresh(String symbol) {
         Path f = priceFile(symbol);
@@ -62,10 +62,11 @@ public class CacheStore {
     }
 
     /**
-     * Belirtilen hisse için önbellekteki tüm satırları okur.
+     * Sembolün önbellek dosyasındaki tüm satırları okur.
      *
      * @param symbol hisse sembolü
-     * @return satır listesi, dosya yoksa boş liste
+     * @return {@code tarih,kapanış,hacim} biçimindeki CSV satırları
+     * @implNote G/Ç hatasında istisna yayılmaz, boş liste döner.
      */
     public List<String> readLines(String symbol) {
         try {
@@ -76,10 +77,11 @@ public class CacheStore {
     }
 
     /**
-     * Belirtilen hisse için önbellek dosyasına satırları yazar (varsa üzerine yazar).
+     * Satırları sembolün önbellek dosyasına yazar; dosya varsa içeriği tamamen değiştirilir.
      *
      * @param symbol hisse sembolü
-     * @param lines  yazılacak satırlar ({@code tarih,kapanis,hacim} formatında)
+     * @param lines  yazılacak CSV satırları ({@code tarih,kapanış,hacim} biçiminde)
+     * @implNote G/Ç hatasında istisna yutulur ve durum {@code WARN} seviyesinde günlüğe yazılır.
      */
     public void writeLines(String symbol, List<String> lines) {
         try {
@@ -91,10 +93,10 @@ public class CacheStore {
     }
 
     /**
-     * Bir hisse sembolü için önbellek dosyasının tam yolunu döndürür.
+     * Sembolün önbellek dosyası yolunu hesaplar.
      *
      * @param symbol hisse sembolü
-     * @return {@code {cacheDir}/price_SEMBOL.csv} yolu
+     * @return önbellek dizini altında {@code price_SEMBOL.csv} yolu (sembol büyük harfe çevrilir)
      */
     private Path priceFile(String symbol) {
         return cacheDir.resolve("price_" + symbol.toUpperCase() + ".csv");

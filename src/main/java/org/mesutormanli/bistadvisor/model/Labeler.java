@@ -5,36 +5,40 @@ import org.mesutormanli.bistadvisor.features.TechnicalFeatures;
 import java.util.List;
 
 /**
- * Gelecekteki getiriye göre etiket (AL/SAT/TUT) atayan sınıflandırıcı.
- * <p>
- * {@code horizon} gün sonrasındaki fiyata bakarak:
- * <ul>
- *   <li>&gt; %5 ise {@code BUY} (0)</li>
- *   <li>&lt; -%5 ise {@code SELL} (1)</li>
- *   <li>aksi halde {@code HOLD} (2)</li>
- * </ul>
+ * Geleceğe bakarak AL/TUT/SAT sınıf etiketi üreten etiketleyici.
+ *
+ * <p>Sınıf etiketleri: {@link #BUY}=0 (AL), {@link #SELL}=1 (SAT), {@link #HOLD}=2 (TUT).
+ * Örnek indeksindeki kapanıştan {@code horizon} bar sonrasının kapanışına kadar olan ileriye
+ * dönük getiriye göre: getiri &gt; +%5 eşiğinde AL, &lt; &#8722;%5 eşiğinde SAT, eşiğin
+ * arasındaki sakin hareketlerde TUT etiketi atanır. Etiketin geleceği gördüğü garanti
+ * edilsin diye son {@code horizon} barda (gelecek bar yoksa) etiketsiz örnek kabul edilip
+ * TUT döndürülür.
  */
 public final class Labeler {
 
-    /** Alım etiketi (0) — beklenen getiri &gt; %5 */
     public static final int BUY = 0;
 
-    /** Satım etiketi (1) — beklenen getiri &lt; -%5 */
     public static final int SELL = 1;
 
-    /** Tutma etiketi (2) — getiri %5'ten düşük */
     public static final int HOLD = 2;
 
+    /**
+     * Kurar: yalnızca statik üyelere sahip sınıfın örneklenmesini engelleyen özel yapıcı.
+     */
     private Labeler() {}
 
     /**
-     * Belirtilen endeksteki fiyatı {@code horizon} gün sonrasıyla karşılaştırarak
-     * bir etiket döndürür.
+     * Atar: örneğin ileriye dönük getirisine göre AL/TUT/SAT sınıf etiketini belirler.
+     *
+     * <p>Getiri, örnek barının kapanışı ile {@code horizon} bar sonrasının kapanışı arasındaki
+     * oransal değişimdir. Getiri &gt; +%5 ise AL ({@link #BUY}), &lt; &#8722;%5 ise SAT
+     * ({@link #SELL}), aksi halde TUT ({@link #HOLD}). {@code sampleIndex + horizon} seri
+     * boyutuna ulaşıp geçtiğinde (gelecek bar yoksa) etiketsiz örnek olarak TUT döndürülür.
      *
      * @param bars        fiyat çubukları serisi
-     * @param horizon     ileriye bakma dönemi (gün)
-     * @param sampleIndex örneklem indeksi
-     * @return {@link #BUY}, {@link #SELL} veya {@link #HOLD}
+     * @param horizon     ileriye bakma dönemi (bar/gün sayısı, ör. varsayılan 20)
+     * @param sampleIndex örneğin seri üzerindeki indeksi
+     * @return {@link #BUY}, {@link #SELL} veya {@link #HOLD} sınıf etiketi
      */
     public static int labelFor(List<TechnicalFeatures.Bar> bars, int horizon, int sampleIndex) {
         if (sampleIndex + horizon >= bars.size()) return HOLD;

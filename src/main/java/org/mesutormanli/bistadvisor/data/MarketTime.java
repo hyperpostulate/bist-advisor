@@ -4,40 +4,41 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 
 /**
- * Piyasa verisi için ortak zaman yardımcıları.
+ * Piyasa zamanı yardımcıları; tüm tarih hesaplarında {@code Europe/Istanbul} saat dilimini esas alır.
  * <p>
- * Hem fiyat serilerinin tarihlenmesi (Yahoo JSON timestamp dönüşümü) hem de önbellek
- * tazelik kontrolleri bu sınıf üzerinden yapılır; böylece "bugün" kavramı tüm
- * uygulamada tek bir saat dilimine sabittir.
+ * Fiyat serilerinin tarihlenmesi ve önbellek tazelik kontrolleri bu sınıfın
+ * {@link #today()} ve {@link #isFreshEnough(LocalDate)} yardımcıları üzerinden yürütülür;
+ * böylece "bugün" kavramı uygulama genelinde tek bir saat dilimine sabitlenir.
  */
 public final class MarketTime {
 
-    /** BIST işlem saatleri için saat dilimi. */
     public static final ZoneId ZONE = ZoneId.of("Europe/Istanbul");
 
-    /**
-     * Önbellek tazelik penceresi (takvim günü). Hafta sonu, resmi tatil ve uzun bayram
-     * molalarında "bugün" barı oluşmayacağı için toleranslı bir pencere kullanılır.
-     */
     private static final int FRESH_WINDOW_DAYS = 4;
 
+    /**
+     * Kurar; yardımcı sınıfın örneklenmesini engellemek için gizli tutulur.
+     */
     private MarketTime() {}
 
     /**
      * Piyasa saat dilimine göre bugünün tarihini döndürür.
      *
-     * @return bugün ({@code Europe/Istanbul})
+     * @return {@code Europe/Istanbul} saat diliminde bugünün tarihi
      */
     public static LocalDate today() {
         return LocalDate.now(ZONE);
     }
 
     /**
-     * Son bar tarihinin taze sayılıp sayılmayacağını belirler: taze, eğer son bar
-     * {@code bugün - FRESH_WINDOW_DAYS} tarihinden önce değilse.
+     * Son bar tarihinin 4 günlük tazelik penceresi içinde olup olmadığını belirler.
+     * <p>
+     * Son bar tarihi {@code bugün − 4} gününden eski değilse veri "taze" kabul edilir.
      *
-     * @param lastBarDate önbellekteki son barın tarihi
-     * @return {@code true} eğer veri tazeyse
+     * @param lastBarDate kontrol edilecek son bar tarihi
+     * @return son bar tarihi tazelik penceresindeyse {@code true}, tarih {@code null} ise {@code false}
+     * @implNote Hafta sonu ve resmi tatillerde yeni bar oluşmadığından, tazelik
+     *           4 günlük toleransla {@link #today()} değerine göre sınanır.
      */
     public static boolean isFreshEnough(LocalDate lastBarDate) {
         return lastBarDate != null && !lastBarDate.isBefore(today().minusDays(FRESH_WINDOW_DAYS));

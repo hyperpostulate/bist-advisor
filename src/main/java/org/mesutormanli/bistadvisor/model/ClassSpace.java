@@ -3,30 +3,37 @@ package org.mesutormanli.bistadvisor.model;
 import java.util.Arrays;
 
 /**
- * Eğitim etiketlerindeki benzersiz sınıfları {@code 0..K-1} sıkı indekslere eşleyen yardımcı.
- * <p>
- * SMILE modelleri olasılık dizisini <em>gözlenen sınıf sayısı</em> kadar bekler
- * (aksi halde {@code IllegalArgumentException} fırlatır). Bu sınıf, eğitim setinde bir
- * sınıf hiç oluşmamışken (ör. yatay piyasada SAT etiketi üretilmemişken) tahminlerin
- * güvenli biçimde yapılabilmesi için gerekli eşlemeyi sağlar:
- * <ul>
- *   <li>{@link #compress(int[])} — orijinal etiketleri sıkı indekslere çevirir (eğitim için)</li>
- *   <li>{@link #label(int)} — sıkı indeksi orijinal sınıf kimliğine geri çevirir (tahmin için)</li>
- * </ul>
+ * Eğitim etiketlerinden tekrarsız, artan sırada sınıf kimliği tablosu üreten ve bu tablo
+ * üzerinden sınıf etiketlerini {@code 0..k-1} arası kesintisiz indekslere eşleyen yardımcı sınıf.
+ *
+ * <p>SMILE modelleri tahminde olasılık vektörünün boyutunu eğitimdeki sınıf sayısı kadar bekler;
+ * eğitim setinde bir sınıf hiç oluşmamışsa (ör. yatay piyasada SAT etiketi üretilmemişse) ham
+ * sınıf kimlikleriyle çalışmak hata üretir. Bu sınıf bu tuzağı çözer: eğitimde gözlenen sınıfları
+ * sıfırdan başlayan kesintisiz indekslere {@link #compress(int[])} ile sıkıştırır, tahmin sırasında
+ * bulunan indeksi {@link #label(int)} ile geri açar. Eğitimde olmayan bir sınıf için istisna
+ * fırlattığından, stratejiler eksik sınıf durumunda istisna üretmeden yalnızca gözlenen sınıflar
+ * arasında tahmin yapabilir.
+ *
+ * @implNote Sınıf kimlikleri ikili arama ({@code Arrays.binarySearch}) ile bulunduğu için tablonun
+ *           artan sırada tutulması şarttır; tablo {@link #of(int[])} içinde sıralanarak kurulur.
  */
 public final class ClassSpace {
 
-    /** Orijinal sınıf kimlikleri (artan sırada). */
     private final int[] classIds;
 
+    /**
+     * Kurar: sınıf kimlikleri hazır bir tabloyla eşleme oluşturur.
+     *
+     * @param classIds artan sırada tekrarsız sınıf kimlikleri dizisi
+     */
     private ClassSpace(int[] classIds) {
         this.classIds = classIds;
     }
 
     /**
-     * Verilen etiketlerde geçen benzersiz sınıflardan bir {@code ClassSpace} oluşturur.
+     * Oluşturur: eğitim etiketlerinde geçen tekrarsız sınıflardan artan sırada bir tablo kurar.
      *
-     * @param labels eğitim etiketleri ({@code int[N]})
+     * @param labels eğitim etiketleri ({@code int[N]}, ör. AL=0, SAT=1, TUT=2)
      * @return gözlenen sınıfları içeren eşleme
      */
     public static ClassSpace of(int[] labels) {
@@ -34,7 +41,7 @@ public final class ClassSpace {
     }
 
     /**
-     * Eğitim setinde gözlenen sınıf sayısını döndürür (K).
+     * Döndürür: eğitimde gözlenen sınıf sayısını (k) verir.
      *
      * @return sınıf sayısı
      */
@@ -43,20 +50,23 @@ public final class ClassSpace {
     }
 
     /**
-     * Sıkı indekse karşılık gelen orijinal sınıf kimliğini döndürür.
+     * Geri açar: sıkı indeksi orijinal sınıf kimliğine çevirir (tahmin sonrası kullanım).
      *
-     * @param index {@code 0..K-1} arası sıkı indeks
-     * @return orijinal sınıf kimliği (ör. {@link Labeler#BUY})
+     * @param index {@code 0..k-1} arası kesintisiz sınıf indeksi
+     * @return orijinal sınıf etiketi (ör. {@link Labeler#BUY})
+     * @throws ArrayIndexOutOfBoundsException indeks tablo aralığının dışındaysa
      */
     public int label(int index) {
         return classIds[index];
     }
 
     /**
-     * Orijinal etiketleri sıkı indekslere ({@code 0..K-1}) çevirir.
+     * Sıkıştırır: orijinal sınıf etiketlerini {@code 0..k-1} arası kesintisiz indekslere eşler
+     * (eğitim öncesi kullanım).
      *
-     * @param labels orijinal etiketler ({@code int[N]})
+     * @param labels orijinal sınıf etiketleri ({@code int[N]})
      * @return sıkı indeksler ({@code int[N]})
+     * @throws IllegalStateException etiketlerde eğitim tablosunda olmayan bir sınıf varsa
      */
     public int[] compress(int[] labels) {
         int[] out = new int[labels.length];
@@ -64,6 +74,13 @@ public final class ClassSpace {
         return out;
     }
 
+    /**
+     * Bulur: sınıf kimliğinin tablodaki sırasını (sıkı indeksini) ikili aramayla hesaplar.
+     *
+     * @param label aranan sınıf kimliği
+     * @return sıkı indeks ({@code 0..k-1})
+     * @throws IllegalStateException sınıf eğitim setinde yoksa
+     */
     private int indexOf(int label) {
         int i = Arrays.binarySearch(classIds, label);
         if (i < 0) throw new IllegalStateException("egitim setinde olmayan sinif: " + label);

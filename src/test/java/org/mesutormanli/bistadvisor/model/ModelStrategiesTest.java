@@ -12,20 +12,30 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link ModelStrategy} uygulamalarının ortak davranış testleri.
+ * {@link ModelStrategy} uygulamalarının ortak davranış testleri: üç strateji
+ * ({@link ModelType#KNN}, {@link ModelType#SVM}, {@link ModelType#RANDOM_FOREST})
+ * ayırt edici sınıfları öğrenmeli, eksik sınıfta istisna fırlatmamalı ve tek
+ * sınıflı eğitimde sabit tahmin döndürmelidir. Ayrıca KNN'e özgü komşu çoğunluğu
+ * kuralı ve {@link ClassSpace} etiket sıkıştırma/geri açma sözleşmesi sınanır.
  * <p>
- * Üç model için de şunlar doğrulanır: ayırt edici sınıfları öğrenme, eğitim setinde
- * bir sınıf <em>eksikken</em> istisna fırlatmama (SMILE olasılık dizisi boyutu tuzağı)
- * ve tek sınıflı eğitimde sabit tahmin. Ek olarak KNN'in gerçekten k=5 komşu ile
- * karar verdiği doğrulanır (tek komşu (k=1) farklı bir sınıf seçerdi).
- * <p>
- * Testler sentetik, 11 boyutlu ve tamamen deterministiktir; ağa çıkmaz.
+ * Veri yapay ve deterministiktir: her örnek {@code DIMS = 11} boyutludur
+ * ({@link FeatureVector#featureNames} uzunluğu) ve testler boyutlar arası
+ * korelasyondan bağımsız tek boyutlu kümeler kullanır.
  */
 class ModelStrategiesTest {
 
     private static final int DIMS = 11;
 
-    /** Merkezi {@code center} olan {@code n} örneklik deterministik bir öznitelik kümesi üretir. */
+    /**
+     * Merkezi etrafında çok küçük titreşimli, kompakt bir sınıf bulutu üretir.
+     * <p>
+     * Her örneğin 11 boyutu da aynı değere ayarlanır ve {@code (i % 5 - 2) * 1e-3}
+     * jitter uygulanır; böylece örnekler birbirinden farklı ama sıkı kalır.
+     *
+     * @param center bulutun merkez değeri
+     * @param n      üretilecek örnek sayısı
+     * @return boyutları {@code center ± 0,002} civarında titreşen {@code n} örneklik matris
+     */
     private static double[][] blob(double center, int n) {
         double[][] x = new double[n][DIMS];
         for (int i = 0; i < n; i++) {
@@ -35,12 +45,25 @@ class ModelStrategiesTest {
         return x;
     }
 
+    /**
+     * Tek bir sorgu örneği üretir.
+     *
+     * @param value 11 boyutun tamamına yazılacak değer
+     * @return bütün boyutları {@code value} olan tekil özellik vektörü
+     */
     private static double[] point(double value) {
         double[] x = new double[DIMS];
         Arrays.fill(x, value);
         return x;
     }
 
+    /**
+     * İki özellik matrisini satır bazında birleştirir.
+     *
+     * @param a birinci özellik matrisi
+     * @param b ikinci özellik matrisi
+     * @return önce {@code a} sonra {@code b} satırlarını içeren birleşik matris
+     */
     private static double[][] concat(double[][] a, double[][] b) {
         double[][] out = new double[a.length + b.length][];
         System.arraycopy(a, 0, out, 0, a.length);
@@ -48,12 +71,26 @@ class ModelStrategiesTest {
         return out;
     }
 
+    /**
+     * Tek sınıflı etiket dizisi üretir.
+     *
+     * @param value yazılacak sınıf etiketi (ör. {@link Labeler#BUY})
+     * @param n     etiket sayısı
+     * @return tamamı {@code value} olan {@code n} uzunluğunda etiket dizisi
+     */
     private static int[] labels(int value, int n) {
         int[] y = new int[n];
         Arrays.fill(y, value);
         return y;
     }
 
+    /**
+     * İki etiket dizisini birleştirir.
+     *
+     * @param a birinci etiket dizisi
+     * @param b ikinci etiket dizisi
+     * @return önce {@code a} sonra {@code b} elemanlarını içeren birleşik dizi
+     */
     private static int[] concat(int[] a, int[] b) {
         int[] out = new int[a.length + b.length];
         System.arraycopy(a, 0, out, 0, a.length);
@@ -61,6 +98,16 @@ class ModelStrategiesTest {
         return out;
     }
 
+    /**
+     * Üç ayrı buluttan oluşan eğitimde üç sınıfın da doğru öğrenilmesi.
+     * <p>
+     * Senaryo: merkezleri 0,2 / 0,5 / 0,8 olan üç kompakt bulut sırasıyla AL / SAT /
+     * TUT etiketiyle (30'ar örnek) eğitilir. Beklenen davranış: her strateji üç
+     * sınıfı da doğru tahmin eder (0,2 → AL, 0,5 → SAT, 0,8 → TUT) ve AL merkezindeki
+     * skor 0,5'in üzerinde olur.
+     *
+     * @param type sınanan model stratejisi
+     */
     @ParameterizedTest
     @EnumSource(ModelType.class)
     void ayirtEdiciSiniflariOgrenir(ModelType type) {
@@ -75,11 +122,19 @@ class ModelStrategiesTest {
         assertTrue(strategy.predict(point(0.2))[1] > 0.5, type.name() + " skoru 0.5 üstü olmalı");
     }
 
+    /**
+     * Eğitim setinde bir sınıf yokken istisna fırlatılmaması.
+     * <p>
+     * Senaryo: yalnız AL (0,2) ve TUT (0,8) bulutlarıyla eğitim yapılır; SAT sınıfı
+     * hiç gözlenmez — bu durum SMILE modellerinde olasılık dizisi boyutu tuzağını
+     * tetikler. Beklenen davranış: eğitim ve tahmin istisna fırlatmaz, tahmin yalnız
+     * gözlenen sınıflardan birine (AL veya TUT) karşılık gelir.
+     *
+     * @param type sınanan model stratejisi
+     */
     @ParameterizedTest
     @EnumSource(ModelType.class)
     void eksikSinifHatasiFirlatmaz(ModelType type) {
-        // SAT (1) etiketi hiç oluşmuyor: sınıf-eksikliği durumunda tahmin istisna
-        // fırlatmamalı (eski davranış: IllegalArgumentException "Invalid posteriori vector size").
         double[][] x = concat(blob(0.2, 30), blob(0.8, 30));
         int[] y = concat(labels(Labeler.BUY, 30), labels(Labeler.HOLD, 30));
         ModelStrategy strategy = ModelStrategyFactory.create(type);
@@ -90,6 +145,15 @@ class ModelStrategiesTest {
                 type.name() + " yalnız gözlenen sınıflardan birini dönmeli: " + pred[0]);
     }
 
+    /**
+     * Tek sınıflı eğitimde sabit tahmin üretilmesi.
+     * <p>
+     * Senaryo: 30 örneğin tamamı TUT etiketiyle eğitilir (k=1 sınıf). Beklenen
+     * davranış: her sorguda, sorgu eğitim kümesinden uzak olsa bile TUT döner ve
+     * skor pozitif olur (tek sınıf %100 güvenle sabitlenir).
+     *
+     * @param type sınanan model stratejisi
+     */
     @ParameterizedTest
     @EnumSource(ModelType.class)
     void tekSinifliEgitimSabitTahminDoner(ModelType type) {
@@ -103,6 +167,14 @@ class ModelStrategiesTest {
         assertTrue(pred[1] > 0, type.name() + " skoru pozitif olmalı");
     }
 
+    /**
+     * Eğitilmemiş KNN'in karar üretmeyen varsayılan sonucu döndürmesi.
+     * <p>
+     * Senaryo: {@link KnnStrategy} eğitilmeden doğrudan sorgulanır. Beklenen
+     * davranış: varsayılan sınıf olarak {@link Labeler#HOLD} ile skor 0,0 döner
+     * ({@code {HOLD, 0.0}}); sıfır güven, eğitimsiz modelin öneri üretmediğini
+     * gösterir.
+     */
     @Test
     void egitilmisModelVarsayilanSinifiTutmaz() {
         ModelStrategy strategy = new KnnStrategy();
@@ -111,10 +183,16 @@ class ModelStrategiesTest {
         assertEquals(0.0, pred[1], 1e-9);
     }
 
+    /**
+     * KNN'in k=5 komşu çoğunluğuyla karar vermesi.
+     * <p>
+     * Senaryo: 0,50 çevresinde toplanmış 20 SAT örneği ve 0,44'te tek bir AL örneği
+     * eğitilir; 0,45 sorgulanır — en yakın komşu tek AL örneğidir. Beklenen davranış:
+     * en yakın 5 komşunun çoğunluğu SAT olduğu için tahmin SAT olur (k=1 olsaydı tek
+     * yakın örnek BUY kazanırdı).
+     */
     @Test
     void knnBesKomsuIleKararVerir() {
-        // 20 örnek sınıf 1 (0.50 çevresi), sorguya tek ama çok yakın 1 örnek sınıf 0 (0.44).
-        // k=5 ile çoğunluk sınıf 1 olmalı; k=1 olsaydı en yakın komşu (sınıf 0) kazanırdı.
         List<double[]> xs = new ArrayList<>();
         List<Integer> ys = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
@@ -134,6 +212,14 @@ class ModelStrategiesTest {
                 "k=5 ile cogunluk sinif secilmeli; k=1 olsaydi BUY (0) secilirdi");
     }
 
+    /**
+     * {@link ClassSpace} etiketlerinin sıkıştırılıp geri açılması.
+     * <p>
+     * Senaryo: {@code {TUT, AL, AL}} etiketleriyle bir tablo kurulur. Beklenen
+     * davranış: gözlenen 2 sınıf için {@code size()} 2 olur; artan sırada indeks 0
+     * AL'ye, indeks 1 TUT'a geri açılır ve {@code {AL, TUT, AL}} sıkıştırıldığında
+     * {@code {0, 1, 0}} ortaya çıkar.
+     */
     @Test
     void classSpaceEtiketleriGeriDonusturur() {
         ClassSpace space = ClassSpace.of(new int[]{Labeler.HOLD, Labeler.BUY, Labeler.BUY});

@@ -15,34 +15,42 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Uygulamanın giriş noktası.
+ * Uygulamanın {@code @SpringBootApplication} giriş noktası ve iki çalışma modunun seçicisi.
  * <p>
- * <strong>Çalışma modu seçimi</strong>: CLI modu yalnızca
- * açıkça istenince başlar — ilk argüman bilinen bir komut ({@code init/run/confirm/status/train})
- * ya da {@code --cli} bayrağı varsa. Diğer tüm argümanlar (ör. {@code --spring.profiles.active=x},
- * {@code --server.port=9090}) Spring yapılandırmasıdır ve uygulama Web modunda açılır.
- * Interaktif Spring Shell kabuğu kapalıdır (komutlar {@code @ShellMethod} içermez;
- * CLI girişi {@link AdvisorCommands} üzerinden çalışır).
+ * Çalışma modları: <strong>web modu</strong> (varsayılan) ve <strong>CLI</strong>
+ * (komut satırı) modu. Bilinen komutlar {@code init}, {@code run}, {@code confirm},
+ * {@code status} ve {@code train}; CLI modunu tetikleyen imleyici ise {@code --cli}.
+ * CLI çağrımında web katmanı hiç kurulmaz ({@code WebApplicationType.NONE}, servlet yok)
+ * ve imleyici argüman listesinden çıkarılır. Aksi halde bilinmeyen komut kontrolü yapılır
+ * ve normal (web) başlatma olur; seçenek argümanları ({@code --server.port=...} gibi)
+ * atlandığı için Spring argümanları web modunu bozmaz.
+ * <p>
+ * Ayrıca Spring Shell'in komut satırını ele geçirmesi, boş bir
+ * {@code ApplicationRunner} bean'i ile engellenir.
+ *
+ * @see AdvisorCommands
  */
 @SpringBootApplication
 public class BistAdvisorApplication {
 
-    /** CLI komut adları. */
     static final List<String> COMMANDS = List.of("init", "run", "confirm", "status", "train");
 
-    /** CLI modunu tetikleyen açık bayrak. */
     static final String CLI_FLAG = "--cli";
 
     /**
-     * Uygulamanın giriş noktası. CLI çağrısıysa Web/Shell'i kapatarak komutu işler;
-     * değilse Spring Boot uygulamasını (Web) başlatır.
+     * Uygulamayı başlatır ve çağrım biçimine göre CLI veya web modunu seçer.
+     * <p>
+     * Spring Shell'in interaktif kipten otomatik başlamasını kapatmak için
+     * {@code spring.shell.interactive.enabled=false} varsayılan özelliği atanır.
+     * CLI çağrımında {@code WebApplicationType.NONE} ile servlet kurulmaz ve {@code --cli}
+     * imleyicisi argümanlardan düşürülür; aksi halde bilinmeyen komut kontrolü yapılarak
+     * normal (web) başlatma yapılır.
      *
      * @param args komut satırı argümanları
+     * @throws IllegalStateException Spring bağlamı başlatılamazsa
      */
     public static void main(String[] args) {
         SpringApplication app = new SpringApplication(BistAdvisorApplication.class);
-        // Spring Shell'in argümanları kabuk komutu olarak yorumlamasını kapat:
-        // CLI girişi bizim cliRunner'ımızdan yürür, kabuk (komutsuz) çöküş kaynağıydı.
         app.setDefaultProperties(java.util.Map.of("spring.shell.interactive.enabled", "false"));
         if (isCliInvocation(args)) {
             app.setWebApplicationType(WebApplicationType.NONE);
@@ -54,27 +62,28 @@ public class BistAdvisorApplication {
     }
 
     /**
-     * Spring Shell'in uygulama argümanlarını kabuk komutu olarak çalıştıran runner'ını
-     * devre dışı bırakır: aynı ada sahip bir bean tanımlandığında
-     * {@code ShellRunnerAutoConfiguration.springShellApplicationRunner} geri çekilir.
-     * Projede {@code @ShellMethod} komutu yoktur; CLI girişi {@code cliRunner}'dan yürür.
-     * (Yoksa {@code --server.port=...} gibi Spring argümanları "komut bulunamadı"
-     * istisnasıyla başlatmayı öldürür.)
+     * Spring Shell'in komut satırını ele geçirmesini engelleyen boş
+     * {@code ApplicationRunner} bean'ini tanımlar.
+     * <p>
+     * Spring'in sağladığı runner, bu bean ile OVERRIDE edilir ve boş lambda çalışır.
      *
-     * @return işlevsiz (no-op) application runner
+     * @return hiçbir iş yapmayan {@code ApplicationRunner}
      */
     @Bean
     org.springframework.boot.ApplicationRunner springShellApplicationRunner() {
-        return args -> { /* kasıtlı boş */ };
+        return args -> { };
     }
 
     /**
-     * Çağrının CLI çalıştırması olup olmadığını belirler: {@code --cli} bayrağı varsa ya da
-     * ilk bayraksız argüman bilinen bir komutsa CLI'dır. Spring yapılandırma argümanları
-     * ({@code --...}) CLI tetiklemez.
+     * Argümanların bir CLI çağrımı olup olmadığını belirler.
+     * <p>
+     * {@code --cli} imleyicisi varsa doğrudan {@code true} döner. Yoksa ilk seçenek
+     * olmayan ({@code -} ile başlamayan) argümanın bilinen komutlardan biri olup olmadığına
+     * bakılır (büyük/küçük harfsiz). Seçenek argümanlar atlandığı için Spring argümanları
+     * web modunu bozmaz.
      *
      * @param args komut satırı argümanları
-     * @return {@code true} eğer CLI modu çalıştırılacaksa
+     * @return CLI çağrımıysa {@code true}, web modu çağrımıysa {@code false}
      */
     static boolean isCliInvocation(String[] args) {
         if (Arrays.asList(args).contains(CLI_FLAG)) return true;
@@ -85,18 +94,21 @@ public class BistAdvisorApplication {
     }
 
     /**
-     * {@code --cli} işaretleyicisini argüman listesinden çıkarır.
+     * Argüman listesinden yalnızca {@code --cli} imleyicisini düşürür.
      *
      * @param args ham argümanlar
-     * @return işaretsiz argümanlar
+     * @return imleyici çıkarılmış yeni argüman dizisi
+     * @implNote Diğer argümanların sırası ve içeriği aynen korunur.
      */
     static String[] stripCliMarker(String[] args) {
         return Arrays.stream(args).filter(a -> !CLI_FLAG.equals(a)).toArray(String[]::new);
     }
 
     /**
-     * İlk argüman bilinmeyen bir komut ise kullanıcıyı uyarır ve çıkarsın; aksi halde
-     * Spring argümanlarıyla Web modunda devam edilir.
+     * İlk argümanın bilinmeyen bir komut olmadığını kontrol eder.
+     * <p>
+     * İlk argüman {@code -} ile başlamıyorsa ve bilinen komutlar arasında değilse hata
+     * metni standart hata akışına (stderr) yazılır ve {@code System.exit(1)} ile çıkılır.
      *
      * @param args komut satırı argümanları
      */
@@ -108,12 +120,17 @@ public class BistAdvisorApplication {
     }
 
     /**
-     * CLI modunda çalıştırıldığında ilk argümanı komut olarak alır ve
-     * {@code AdvisorCommands} üzerinden ilgili metoda yönlendirir. Bilinen komut
-     * içermeyen argümanlar Spring yapılandırması sayılır ve yok sayılır.
+     * CLI komutlarını {@link AdvisorCommands} uygulamasına dağıtan
+     * {@code CommandLineRunner} bean'ini tanımlar.
+     * <p>
+     * İlk argüman bilinen bir komutsa ilgili çağrı yapılır: {@code init} için
+     * {@code runInit}; {@code run}, {@code status} ve {@code train} için doğrudan
+     * {@link AdvisorCommands} metodları; {@code confirm} için kalan argümanlar liste
+     * olarak toplanıp iletilir. Argümansız veya bilinmeyen komutlu çağrılarda sessizce
+     * çıkılır.
      *
-     * @param commands CLI komutlarını işleyen servis
-     * @return CommandLineRunner Spring bean'i
+     * @param commands CLI komutlarının uygulaması
+     * @return komutları dağıtacak {@code CommandLineRunner}
      */
     @Bean
     CommandLineRunner cliRunner(AdvisorCommands commands) {
@@ -131,19 +148,21 @@ public class BistAdvisorApplication {
                 }
                 case "status" -> commands.status();
                 case "train" -> commands.train();
-                default -> { /* ulasilamaz */ }
+                default -> { }
             }
         };
     }
 
     /**
-     * {@code init} komutunu işler: toplam sermaye, mod, model ve portföy pozisyonlarını
-     * komut satırı argümanlarından ayrıştırır ve {@code AdvisorCommands.init()}'e
-     * yönlendirir.
+     * {@code init} komutunun argümanlarını ayrıştırır ve çağrıyı yürütür.
+     * <p>
+     * Desteklenen argümanlar: {@code --budget=} (varsayılan 50000), {@code --mode=},
+     * {@code --model=} ve {@code --pos=SEMBOL:lot:fiyat,...}. Her hata (geçersiz sayı,
+     * eksik alan) ayrı satırda toplanır ve "Hatalar:" başlığı altında yazdırılır;
+     * geçerli kısımlarla {@link AdvisorCommands#init} yine de çağrılır.
      *
-     * @param commands CLI komutlarını işleyen servis
-     * @param args     komut satırı argümanları ({@code --budget=} toplam sermaye, {@code --mode=...},
-     *                 {@code --model=...}, {@code --pos=SEMBOL:lot:fiyat,...})
+     * @param commands CLI komutlarının uygulaması
+     * @param args     {@code init} komutundan sonraki argümanlar
      */
     private void runInit(AdvisorCommands commands, String[] args) {
         double budget = 50000;

@@ -30,12 +30,18 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Günlük öneri orkestratörü: veri yükler, model tahminlerini üretir ve karar
- * mantığını {@link AllocationPlanner}'a devreder.
+ * Günlük öneri akışının orkestratörü: veri yükleme, model tahmini ve planlama
+ * adımlarını birleştirip kullanıcıya dönük {@link AnalysisResult} üretir.
  * <p>
- * Bir analiz turunda her sembol için fiyat serisi ve özellik vektörü <em>bir kez</em>
- * hesaplanır; fiyat verisi alınamayan semboller için sahte fiyat üretilmez,
- * "veri yok" bildirilir.
+ * Veri + model + planlama hat zinciri şu şekilde kurulur: {@link PortfolioService}
+ * üzerinden portföy durumu (derin kopya) ve mod/model tipi okunur,
+ * {@link ModelTrainer#getOrTrain} ile seçili endeks için model hazırlanır, sembol
+ * bazlı fiyat serileri ve öznitelik vektörleri çalışma içi önbellekle tek sefer
+ * yüklenir, karar mantığı {@link AllocationPlanner#plan} ile çalıştırılır ve sonuç
+ * numaralı {@link Recommendation} listelerine çevrilir. Aynı sembol için bir
+ * çalışma turunda tekrar veri kaynağına çıkılmaz; fiyat verisi alınamayan sembole
+ * sahte fiyat üretilmez.
+ * </p>
  */
 @Service
 public class DailyAdvisor {
@@ -49,7 +55,13 @@ public class DailyAdvisor {
     private final PortfolioService portfolioService;
 
     /**
-     * {@code DailyAdvisor} servisini kurar. Bağımlılıklar Spring tarafından enjekte edilir.
+     * Servisin bağımlılıklarını enjekte ederek yeni bir {@code DailyAdvisor} kurar.
+     *
+     * @param bistIndices     seçili endeksteki sembol listelerini sağlayan bileşen
+     * @param yahoo           fiyat serisi ve temel verileri çeken istemci
+     * @param cacheStore      yerel CSV fiyat önbelleği
+     * @param modelTrainer    modelleri eğiten ya da önbellekten getiren servis
+     * @param portfolioService portföy durumunu ve nakit/slot ayarlarını yöneten servis
      */
     public DailyAdvisor(BistIndices bistIndices, YahooClient yahoo,
                         CacheStore cacheStore,
@@ -62,43 +74,51 @@ public class DailyAdvisor {
     }
 
     /**
-     * Tek bir hisse senedi önerisini temsil eder.
+     * Numaralandırılmış tek bir AL/TUT/SAT önerisi.
      *
-     * @param index  sıra numarası
-     * @param symbol hisse sembolü
-     * @param action işlem türü (AL/SAT/TUT)
-     * @param lots   lot miktarı
-     * @param price  güncel fiyat ({@code null} = fiyat verisi yok)
-     * @param score  model güven skoru ({@code null} = tahmin yok)
-     * @param note   açıklama notu
+     * @param index  önerinin listedeki sıra numarası
+     * @param symbol önerilen hissenin sembolü
+     * @param action işlem: {@code AL}, {@code TUT} ya da {@code SAT}
+     * @param lots   önerilen lot adedi
+     * @param price  kararın dayanak fiyatı; {@code null} = fiyat verisi yok
+     * @param score  model skoru/güveni; {@code null} = tahmin yok
+     * @param note   kararın gerekçesini özetleyen not
      */
     public record Recommendation(int index, String symbol, String action,
                                  int lots, Double price, Double score, String note) {}
 
     /**
-     * Günlük analiz sonucunu kapsüller.
+     * Bir analiz turunun tüm sonuçlarını kapsüler.
      *
-     * @param holdings       mevcut portföy pozisyonları için öneriler
-     * @param buys           alım önerileri
-     * @param availableCash  kullanılabilir nakit
-     * @param positionCount  mevcut pozisyon sayısı
-     * @param maxPositions   maksimum pozisyon limiti
-     * @param buySlots       doldurulabilecek <em>yeni</em> pozisyon sayısı
-     * @param warnings       kullanıcıya gösterilecek uyarılar (ör. veri yok)
+     * @param holdings      mevcut pozisyonlar için AL/TUT/SAT önerileri
+     * @param buys          alım (AL) önerileri
+     * @param availableCash portföyün kullanılabilir nakdi
+     * @param positionCount mevcut pozisyon sayısı
+     * @param maxPositions  izin verilen maksimum pozisyon sayısı (5)
+     * @param buySlots      doldurulabilecek boş alım slotu sayısı
+     * @param warnings      kullanıcıya gösterilecek uyarı satırları
      */
     public record AnalysisResult(List<Recommendation> holdings, List<Recommendation> buys,
                                  double availableCash, int positionCount,
                                  int maxPositions, int buySlots, List<String> warnings) {}
 
     /**
-     * Günlük portföy analizini çalıştırır:
-     * <ul>
-     *   <li>Mevcut pozisyonlar için SAT/TUT kararlarını üretir</li>
-     *   <li>Uygun hisseler için AL önerilerini sıralar ve bütçe dağıtımı yapar</li>
-     *   <li>Son çalışma tarihini günceller</li>
-     * </ul>
+     * Günlük analizi uçtan uca çalıştırır ve öneri listelerini üretir.
      *
-     * @return analiz sonucu ({@code AnalysisResult})
+     * <p>Portföy durumu, mod ve model tipi okunup seçili endeks için model
+     * hazırlanır; her pozisyon ve aday için fiyat serisi ile öznitelik vektörü
+     * çalışma içi önbellekten (gerekirse yeniden çekilerek) sağlanır. Pozisyonlar
+     * {@link HoldingInput}, portföyde olmayan endeks hisseleri ve mevcut pozisyonlar
+     * ({@code existing=true} ile eklemeye aday) {@link CandidateInput} olarak
+     * {@link AllocationPlanner#plan} yöntemine verilir. Çıkan plan numaralı
+     * önerilere çevrilir ve son çalıştırma tarihi portföy durumuna yazılır
+     * ({@code lastRunDate} = bugün).</p>
+     *
+     * @return pozisyon önerileri, alım önerileri, nakit, pozisyon/slot sayıları ve
+     *         uyarıları içeren analiz sonucu
+     * @implNote Analiz bir kez çalıştırıldığında aynı sembol için hem bar serisi
+     *           hem de öznitelik vektörü {@link #loadSeriesCached} ve
+     *           {@link #featuresCached} ile memoize edilir.
      */
     public AnalysisResult analyze() {
         PortfolioState state = portfolioService.getState();
@@ -126,8 +146,6 @@ public class DailyAdvisor {
                     price, predClass, score));
         }
 
-        // Alım adayları: endeksteki diğer hisseler + mevcut pozisyonlara ekleme.
-        // Eleneleme (SAT çakışması, slot, eşik) AllocationPlanner'da yapılır.
         Set<String> held = new HashSet<>();
         for (Position p : state.positions) held.add(p.symbol());
 
@@ -170,10 +188,12 @@ public class DailyAdvisor {
     }
 
     /**
-     * Portföydeki tüm pozisyonlar için güncel fiyatları harita olarak döndürür.
-     * Fiyat verisi alınamayan semboller haritada yer almaz ("veri yok" kabul edilir).
+     * Mevcut pozisyonların güncel fiyatlarını toplar.
      *
-     * @return sembol -> güncel fiyat eşlemesi (yalnızca fiyat bilinenler)
+     * @return sembol → son kapanış fiyatı eşlemesi; serisi/verisi olmayan semboller
+     *         atlanır ve pozisyonların portföydeki sırası korunur
+     * @implNote Sonuç {@link LinkedHashMap} ile döndüğü için ekleme (pozisyon)
+     *           sırası korunur.
      */
     public Map<String, Double> currentPrices() {
         Map<String, Double> prices = new LinkedHashMap<>();
@@ -185,19 +205,27 @@ public class DailyAdvisor {
     }
 
     /**
-     * Belirtilen hisse için fiyat serisini önbellekten (harita üzerinden) döndürür.
-     * Seri daha önce yüklenmemişse {@link #loadSeries(String)} çağrılır.
+     * Sembolün fiyat serisini çalışma içi önbellekten döndürür, yoksa yükler.
+     *
+     * @param symbol yüklenecek hissenin sembolü
+     * @param cache  çalışma süresince geçerli olan sembol → bar listesi memoizasyon haritası
+     * @return sembolün bar serisi
+     * @implNote Aynı sembol için bir çalışma turunda ikinci kez veri kaynağına
+     *           çıkılmaz.
      */
     private List<Bar> loadSeriesCached(String symbol, Map<String, List<Bar>> cache) {
         return cache.computeIfAbsent(symbol, this::loadSeries);
     }
 
     /**
-     * Belirtilen hisse için fiyat serisini yükler. Önce önbelleği kontrol eder;
-     * taze değilse Yahoo Finance'den çeker ve önbelleğe yazar.
+     * Sembolün fiyat serisini yerel CSV önbelleğinden okur, gerekirse tazeler.
      *
-     * @param symbol hisse sembolü
-     * @return fiyat çubukları listesi
+     * @param symbol yüklenecek hissenin sembolü
+     * @return sembolün bar serisi
+     * @implNote Önbellek taze değilse Yahoo'dan çekilen seri
+     *           ({@code tarih,kapanış,hacim} satırları) CSV olarak yazılır; seri
+     *           her durumda {@link TechnicalFeatures#toBars} ile CSV satırlarından
+     *           okunur.
      */
     private List<Bar> loadSeries(String symbol) {
         if (!cacheStore.hasFresh(symbol)) {
@@ -211,21 +239,28 @@ public class DailyAdvisor {
     }
 
     /**
-     * Fiyat serisinin son kapanış değerini döndürür. Seri boşsa (veri yoksa)
-     * {@code null} döner — sahte fiyat üretilmez.
+     * Bar serisinin son kapanış fiyatını (güncel fiyat) döndürür.
+     *
+     * @param series kapanış fiyatları içeren bar serisi
+     * @return serinin son kapanışı; seri boşsa fiyat bilinmediğinden {@code null}
      */
     private Double currentPrice(List<Bar> series) {
         return series.isEmpty() ? null : series.getLast().close();
     }
 
     /**
-     * Bir hisse için normalize öznitelik vektörünü hesaplar ve tur içi önbelleğe alır;
-     * aynı sembol için hem holding hem aday döngülerinde tek hesaplama yapılır.
+     * Sembolün normalize edilmiş öznitelik vektörünü çalışma içi önbellekten döndürür,
+     * yoksa hesaplar.
      *
-     * @param symbol      hisse sembolü
-     * @param bars        fiyat çubukları serisi
-     * @param featureCache tur içi özellik önbelleği
-     * @return 11 boyutlu normalleştirilmiş öznitelik dizisi
+     * @param symbol       öznitelikleri hesaplanacak hissenin sembolü
+     * @param bars         sembolün bar serisi
+     * @param featureCache çalışma süresince geçerli olan sembol → öznitelik vektörü
+     *                     memoizasyon haritası
+     * @return {@link Fundamentals} ve bar'lardan türetilip normalize edilmiş
+     *         öznitelik vektörü
+     * @implNote İlk çağrıda temel veriler Yahoo'dan çekilir ve vektör
+     *           {@link FeatureVector#fromBars} ile kurulup normalize edilir; sonraki
+     *           çağrılar haritadan döner.
      */
     private double[] featuresCached(String symbol, List<Bar> bars, Map<String, double[]> featureCache) {
         return featureCache.computeIfAbsent(symbol, s -> {
