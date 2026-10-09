@@ -104,7 +104,10 @@ org.mesutormanli.bistadvisor
 │   ├── DailyAdvisor.java                  # Günlük öneri orkestratörü (veri + model + planlayıcı)
 │   └── ScoreGate.java                     # Model türüne göre yorumlanmış skor eşikleri
 ├── cli/
-│   └── AdvisorCommands.java               # CLI komutları (init/run/confirm/status/train)
+│   ├── AdvisorCommands.java               # CLI komut uygulamaları (init/run/confirm/status/train)
+│   ├── CliCommandRunner.java              # CLI komut dağıtımı (CommandLineRunner)
+│   ├── CliMode.java                       # CLI/Web çalışma modu ayrımı (komut tespiti, --cli imleyicisi)
+│   └── InitArgs.java                      # init argüman ayrıştırma (bütçe/mod/model/analiz/pozisyon)
 ├── config/
 │   ├── AdvisorMode.java                   # Yatırım modu enum (CONSERVATIVE/BALANCED/AGGRESSIVE)
 │   ├── AnalysisType.java                  # Analiz tipi enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
@@ -135,7 +138,7 @@ org.mesutormanli.bistadvisor
 ├── web/
 │   ├── AdvisorController.java             # REST API kontrolcüsü (/api/*)
 │   └── StaticPageConfig.java              # Statik dosya sunumu (index.html)
-└── BistAdvisorApplication.java            # Spring Boot giriş noktası
+└── BistAdvisorApplication.java            # Spring Boot giriş noktası (CLI/Web modu seçimi)
 ```
 
 ### Temel Bileşenler
@@ -145,7 +148,10 @@ org.mesutormanli.bistadvisor
 | `DailyAdvisor` | Veri yükler, model tahminlerini üretir ve karar mantığını `AllocationPlanner`'a devreder; sembol başına tek özellik hesabı |
 | `AllocationPlanner` | Saf karar motoru: SAT/TUT + AL listesi, slot/bütçe dağıtımı (birim teste alınabilir) |
 | `ScoreGate` | Model türüne göre eşik yorumu (KNN'de oy ızgarasına yuvarlama) |
-| `AdvisorCommands` | CLI komut arayüzü: `init`, `run`, `confirm`, `status`, `train` |
+| `AdvisorCommands` | CLI komut uygulamaları: `init`, `run`, `confirm`, `status`, `train` |
+| `CliMode` | CLI/Web modu ayrımı: komut tespiti, `--cli` imleyicisi ayıklama, bilinmeyen komut reddi |
+| `CliCommandRunner` | CLI komut dağıtımı (`CommandLineRunner`); argümansız ya da bilinmeyen komutta sessiz çıkış |
+| `InitArgs` | `init` argüman ayrıştırma (bütçe/mod/model/analiz/pozisyon) + hataların satır satır toplanması |
 | `AdvisorMode` | 3 yatırım modu: TEMKİNLİ (%25 risk), DENGELİ (%50), AGRESİF (%75) |
 | `AnalysisType` | 3 analiz tipi: YALNIZCA_TEKNIK (6 teknik metrik), YALNIZCA_TEMEL (5 temel metrik), TEKNIK_TEMEL (11 metrik) |
 | `YahooClient` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker; crumb'ı her denemede yeniler, istekleri throttle eder, temel veriyi günlük TTL ile önbellekler |
@@ -162,7 +168,7 @@ org.mesutormanli.bistadvisor
 | `ModelTrainer` | Canlı veriyle eğitim (analiz tipinin metrik kümesiyle), TİP:ANALİZ:ENDEKS anahtarlı bellek-içi önbellek |
 | `PortfolioService` | state.yaml okuma/yazma, açık nakit muhasebesi (gerçekleşen kâr/zarar nakde yansır), kısmi satış, portföy kısıtları (maks 5 pozisyon) |
 | `AdvisorController` | REST API: portföy okuma/güncelleme, analiz, işlem onayı, konfigürasyon |
-| `BistAdvisorApplication` | Web modu (varsayılan) veya CLI modu (`--cli` / bilinen komut adı) |
+| `BistAdvisorApplication` | Giriş noktası: CLI/Web modu seçimi (karar `CliMode`'da) + Spring Shell susturma bean'i |
 
 ### Bütçe ve Nakit Modeli
 
@@ -613,7 +619,10 @@ org.mesutormanli.bistadvisor
 ├── advisor/
 │   └── DailyAdvisor.java                  # Daily recommendation engine
 ├── cli/
-│   └── AdvisorCommands.java               # CLI commands (init/run/confirm/status/train)
+│   ├── AdvisorCommands.java               # CLI command implementations (init/run/confirm/status/train)
+│   ├── CliCommandRunner.java              # CLI command dispatch (CommandLineRunner)
+│   ├── CliMode.java                       # CLI/Web mode detection (command detection, --cli marker)
+│   └── InitArgs.java                      # init argument parsing (budget/mode/model/analysis/positions)
 ├── config/
 │   ├── AdvisorMode.java                   # Investment mode enum (CONSERVATIVE/BALANCED/AGGRESSIVE)
 │   ├── AnalysisType.java                  # Analysis type enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
@@ -643,7 +652,7 @@ org.mesutormanli.bistadvisor
 ├── web/
 │   ├── AdvisorController.java             # REST API controller (/api/*)
 │   └── StaticPageConfig.java              # Static file serving (index.html)
-└── BistAdvisorApplication.java            # Application entry point
+└── BistAdvisorApplication.java            # Application entry point (CLI/Web mode selection)
 ```
 
 ### Core Components
@@ -651,7 +660,10 @@ org.mesutormanli.bistadvisor
 | Component | Description |
 |-----------|-------------|
 | `DailyAdvisor` | Generates daily BUY/SELL/HOLD recommendations by combining portfolio and ML model |
-| `AdvisorCommands` | CLI command interface: `init`, `run`, `confirm`, `status`, `train` |
+| `AdvisorCommands` | CLI command implementations: `init`, `run`, `confirm`, `status`, `train` |
+| `CliMode` | CLI/Web mode detection: command detection, `--cli` marker stripping, unknown-command rejection |
+| `CliCommandRunner` | CLI command dispatch (`CommandLineRunner`); silent exit on missing/unknown commands |
+| `InitArgs` | `init` argument parsing (budget/mode/model/analysis/positions) + line-by-line error collection |
 | `AdvisorMode` | 3 investment modes: CONSERVATIVE (25% risk), BALANCED (50%), AGGRESSIVE (75%) |
 | `AnalysisType` | 3 analysis types: TECHNICAL (6 technical metrics), FUNDAMENTAL (5 fundamental metrics), TECHNICAL_FUNDAMENTAL (11 metrics) |
 | `YahooClient` | Fetches OHLCV prices + fundamentals (P/E, P/B, dividend, ROE, growth) from Yahoo Finance |
@@ -667,7 +679,7 @@ org.mesutormanli.bistadvisor
 | `ModelTrainer` | Live data training (with the analysis type's metric subset), TYPE:ANALYSIS:INDEX-keyed in-memory cache |
 | `PortfolioService` | state.yaml read/write, budget-cash reconciliation (budget = total capital, cash is derived), partial sells, portfolio constraints (max 5 positions) |
 | `AdvisorController` | REST API: portfolio read/update, analysis, confirmation, configuration |
-| `BistAdvisorApplication` | Web mode (no args) or CLI mode (with args) |
+| `BistAdvisorApplication` | Entry point: CLI/Web mode selection (decision lives in `CliMode`) + Spring Shell suppression bean |
 
 ### Budget & Cash Model
 

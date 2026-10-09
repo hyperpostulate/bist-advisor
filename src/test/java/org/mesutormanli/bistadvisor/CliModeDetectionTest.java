@@ -1,11 +1,12 @@
 package org.mesutormanli.bistadvisor;
 
 import org.junit.jupiter.api.Test;
+import org.mesutormanli.bistadvisor.cli.CliMode;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link BistAdvisorApplication} komut satırı/web modu ayrımının testleri.
+ * {@link CliMode} komut satırı/web modu ayrımının testleri.
  * <p>
  * Hangi argüman kümesinin uygulamayı web sunucusu olarak, hangisinin CLI
  * ({@code WebApplicationType.NONE}) olarak başlatacağını ve {@code --cli}
@@ -22,7 +23,7 @@ class CliModeDetectionTest {
      */
     @Test
     void bosArgumanWebModudur() {
-        assertFalse(BistAdvisorApplication.isCliInvocation(new String[]{}));
+        assertFalse(CliMode.isCliInvocation(new String[]{}));
     }
 
     /**
@@ -35,9 +36,9 @@ class CliModeDetectionTest {
      */
     @Test
     void bilinenKomutlarCliBaslatir() {
-        for (String cmd : BistAdvisorApplication.COMMANDS) {
-            assertTrue(BistAdvisorApplication.isCliInvocation(new String[]{cmd}), cmd);
-            assertTrue(BistAdvisorApplication.isCliInvocation(new String[]{cmd, "--budget=1"}), cmd);
+        for (String cmd : CliMode.COMMANDS) {
+            assertTrue(CliMode.isCliInvocation(new String[]{cmd}), cmd);
+            assertTrue(CliMode.isCliInvocation(new String[]{cmd, "--budget=1"}), cmd);
         }
     }
 
@@ -50,7 +51,7 @@ class CliModeDetectionTest {
      */
     @Test
     void cliBayragiCliBaslatir() {
-        assertTrue(BistAdvisorApplication.isCliInvocation(new String[]{"--cli", "train"}));
+        assertTrue(CliMode.isCliInvocation(new String[]{"--cli", "train"}));
     }
 
     /**
@@ -63,8 +64,8 @@ class CliModeDetectionTest {
      */
     @Test
     void springArgumanlariWebModunuBozmaz() {
-        assertFalse(BistAdvisorApplication.isCliInvocation(new String[]{"--spring.profiles.active=prod"}));
-        assertFalse(BistAdvisorApplication.isCliInvocation(new String[]{"--server.port=9090"}));
+        assertFalse(CliMode.isCliInvocation(new String[]{"--spring.profiles.active=prod"}));
+        assertFalse(CliMode.isCliInvocation(new String[]{"--server.port=9090"}));
     }
 
     /**
@@ -79,8 +80,8 @@ class CliModeDetectionTest {
     @Test
     void cliBayragiArgumanlardanCikarilir() {
         assertArrayEquals(new String[]{"status"},
-                BistAdvisorApplication.stripCliMarker(new String[]{"--cli", "status"}));
+                CliMode.stripCliMarker(new String[]{"--cli", "status"}));
         assertArrayEquals(new String[]{"init", "--budget=50000"},
-                BistAdvisorApplication.stripCliMarker(new String[]{"init", "--budget=50000"}));
+                CliMode.stripCliMarker(new String[]{"init", "--budget=50000"}));
     }
 }
