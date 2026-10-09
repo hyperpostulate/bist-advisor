@@ -95,7 +95,7 @@
       <button id="analyzeBtn" onclick="analyze()" data-i18n="analyze">Analiz Et</button>
       <span id="analyzeStatus" class="small" style="margin-left:10px"></span>
     </div>
-    <div id="analysis"></div>
+    <div id="analysisResult"></div>
   </div>
 
   <div class="card">
@@ -383,7 +383,7 @@ function render(r) {
   if (r.buys.length===0) h += '<tr><td colspan="6" class="small">' + t('noBuy') + '</td></tr>';
   for (const x of r.buys) h += row(x);
   h += '</table>';
-  document.getElementById('analysis').innerHTML = h;
+  document.getElementById('analysisResult').innerHTML = h;
 }
 function row(x){
   const cls = x.action==='AL'?'al':(x.action==='SAT'?'sat':'tut');
