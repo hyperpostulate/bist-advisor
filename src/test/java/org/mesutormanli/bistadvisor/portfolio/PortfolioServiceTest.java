@@ -2,6 +2,7 @@ package org.mesutormanli.bistadvisor.portfolio;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.AppConfig;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -56,7 +57,7 @@ class PortfolioServiceTest {
     void initPortfolioNakdiSermayedenKurar() {
         PortfolioService svc = newService();
 
-        svc.initPortfolio(50_000, "BALANCED", "RANDOM_FOREST",
+        svc.initPortfolio(50_000, "BALANCED", "RANDOM_FOREST", null,
                 List.of(new Position("THYAO", 100, 240), new Position("ASELS", 50, 351)));
 
         assertEquals(8_450, svc.availableCash(), 0.01);
@@ -76,7 +77,7 @@ class PortfolioServiceTest {
     @Test
     void kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
         assertTrue(svc.applyTransaction("thyao", "AL", 100, 240));
         assertEquals(76_000, svc.availableCash(), 0.01);
@@ -104,7 +105,7 @@ class PortfolioServiceTest {
     @Test
     void tamSatisPozisyonuKaldirirVeKariYansitir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertTrue(svc.applyTransaction("THYAO", "AL", 100, 240));
 
         assertTrue(svc.applyTransaction("THYAO", "SAT", 100, 250));
@@ -124,7 +125,7 @@ class PortfolioServiceTest {
     @Test
     void zararliSatisNakdiAzaltir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertTrue(svc.applyTransaction("THYAO", "AL", 100, 240));
 
         assertTrue(svc.applyTransaction("THYAO", "SAT", 100, 200));
@@ -141,7 +142,7 @@ class PortfolioServiceTest {
     @Test
     void fazlaSatisReddedilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertTrue(svc.applyTransaction("THYAO", "AL", 100, 240));
 
         assertFalse(svc.applyTransaction("THYAO", "SAT", 150, 250));
@@ -162,7 +163,7 @@ class PortfolioServiceTest {
     @Test
     void nakitUzerindeAlimReddedilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
         assertTrue(svc.applyTransaction("THYAO", "AL", 400, 240));
         assertFalse(svc.applyTransaction("THYAO", "AL", 100, 240));
@@ -183,7 +184,7 @@ class PortfolioServiceTest {
     @Test
     void negatifNakitDogrulamaylaBildirilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(1_000, "BALANCED", "RANDOM_FOREST",
+        svc.initPortfolio(1_000, "BALANCED", "RANDOM_FOREST", null,
                 List.of(new Position("THYAO", 10, 200)));
 
         String warning = svc.validatePortfolio();
@@ -202,13 +203,13 @@ class PortfolioServiceTest {
     @Test
     void updatePortfolioButceDegisikliginiNakdeIsler() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
 
-        svc.updatePortfolio(110_000, null, null, null, null);
+        svc.updatePortfolio(110_000, null, null, null, null, null);
         assertEquals(110_000, svc.availableCash(), 0.01);
 
-        svc.updatePortfolio(105_000, null, null, null, null);
+        svc.updatePortfolio(105_000, null, null, null, null, null);
         assertEquals(105_000, svc.availableCash(), 0.01);
     }
 
@@ -223,12 +224,12 @@ class PortfolioServiceTest {
     @Test
     void updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", List.of());
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
-        svc.updatePortfolio(0, null, null, null, List.of(new Position("THYAO", 10, 240)));
+        svc.updatePortfolio(0, null, null, null, null, List.of(new Position("THYAO", 10, 240)));
         assertEquals(97_600, svc.availableCash(), 0.01);
 
-        svc.updatePortfolio(0, null, null, null, List.of());
+        svc.updatePortfolio(0, null, null, null, null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
     }
 
@@ -257,5 +258,68 @@ class PortfolioServiceTest {
 
         assertEquals(500, svc.availableCash(), 0.01);
         assertEquals(1_000, svc.getState().budget, 0.01);
+    }
+
+    /**
+     * Analiz tipinin {@code init} ile ayarlanıp durumda tutulması ve diske yazılması.
+     * <p>
+     * Senaryo: portföy {@code YALNIZCA_TEKNIK} analiz tipiyle başlatılır. Beklenen
+     * davranış: servis bu tipi enum olarak çözer, ham durum alanı {@code TECHNICAL}
+     * olarak görünür ve aynı {@code state.yaml} dosyasından kurulan yeni servis
+     * değeri diskten geri okur.
+     */
+    @Test
+    void analizTipiInitIleAyarlanirVeYamlaYazilir() {
+        PortfolioService svc = newService();
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", "TECHNICAL", List.of());
+
+        assertEquals(AnalysisType.TECHNICAL, svc.analysisType());
+        assertEquals("TECHNICAL", svc.getState().analysisType);
+
+        PortfolioService reloaded = newService();
+        assertEquals(AnalysisType.TECHNICAL, reloaded.analysisType());
+    }
+
+    /**
+     * Analiz tipinin {@code updatePortfolio} ile güncellenmesi, null bırakıldığında korunması.
+     * <p>
+     * Senaryo: varsayılan tip {@code YALNIZCA_TEMEL} takma adıyla güncellenir, ardından
+     * analiz tipi {@code null} geçilerek başka bir güncelleme yapılır. Beklenen davranış:
+     * takma ad {@link AnalysisType#FUNDAMENTAL} olarak çözülür ve null geçilen çağrıda
+     * değer aynen korunur.
+     */
+    @Test
+    void updatePortfolioAnalizTipiniGunceller() {
+        PortfolioService svc = newService();
+        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, svc.analysisType());
+
+        svc.updatePortfolio(0, null, null, "YALNIZCA_TEMEL", null, null);
+        assertEquals(AnalysisType.FUNDAMENTAL, svc.analysisType());
+
+        svc.updatePortfolio(0, null, null, null, null, null);
+        assertEquals(AnalysisType.FUNDAMENTAL, svc.analysisType());
+    }
+
+    /**
+     * Analiz tipi alanı olmayan (eski) {@code state.yaml} dosyasında varsayılana düşülmesi.
+     * <p>
+     * Senaryo: {@code analysisType} alanı içermeyen bir YAML yazılır (özellik öncesi
+     * sürümlerden kalma durum dosyası). Beklenen davranış: servis
+     * {@link AnalysisType#TECHNICAL_FUNDAMENTAL} varsaylanına düşer; eski dosyalar
+     * kırılmadan açılır.
+     *
+     * @throws IOException test YAML dosyası yazılamazsa
+     */
+    @Test
+    void analizTipiAlanOlmayanYamldaVarsayilanaDuser() throws IOException {
+        Files.writeString(dir.resolve("state.yaml"), """
+                budget: 1000.0
+                cash: 500.0
+                """);
+
+        PortfolioService svc = newService();
+
+        assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, svc.analysisType());
     }
 }

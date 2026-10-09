@@ -1,6 +1,7 @@
 package org.mesutormanli.bistadvisor.features;
 
 import org.junit.jupiter.api.Test;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.data.YahooClient.Fundamentals;
 
 import java.util.List;
@@ -88,5 +89,72 @@ class FeatureVectorTest {
 
         assertNotSame(raw, normalized);
         assertTrue(normalized.rsi() >= 0 && normalized.rsi() <= 1);
+    }
+
+    /**
+     * Analiz tipinin metrik kümelerini doğru kesmesi ve tam sürümle eşleşmesi.
+     * <p>
+     * Senaryo: bilinen ölçeklerde normalize edilmiş tipik bir vektör
+     * ({@code normalizeDegerleriOlcekler} ile aynı girdi) üç analiz tipiyle diziye
+     * çevrilir. Beklenen davranış: {@code YALNIZCA_TEKNIK} yalnız ilk 6 (teknik)
+     * değeri, {@code YALNIZCA_TEMEL} yalnız son 5 (temel) değeri içerir;
+     * {@code TEKNIK_TEMEL} ise {@code toArray()} ile (11 değer) birebir aynıdır.
+     */
+    @Test
+    void analizTipiMetrikKumeleriniKesar() {
+        FeatureVector fv = new FeatureVector(50, 0, 0, 0, 0.02, 1, 25, 5, 2, 0.1, 0.2).normalize();
+
+        double[] tech = fv.toArray(AnalysisType.TECHNICAL);
+        double[] fund = fv.toArray(AnalysisType.FUNDAMENTAL);
+
+        assertArrayEquals(new double[]{0.5, 0.5, 0.5, 0.5, 1.0, 1.0 / 3}, tech, 1e-9);
+        assertArrayEquals(new double[]{0.5, 0.5, 0.2, 0.6, 0.7}, fund, 1e-9);
+        assertArrayEquals(fv.toArray(), fv.toArray(AnalysisType.TECHNICAL_FUNDAMENTAL), 1e-9);
+    }
+
+    /**
+     * Kolon adları ile değer dizisinin sütun sıradaşlığının korunması.
+     * <p>
+     * Senaryo: 1'den 11'e kadar ayırt edici değerlerle bir vektör kurulur ve
+     * {@code YALNIZCA_TEKNIK} için ad/değer çiftleri eşleştirilir. Beklenen davranış:
+     * {@code rsi} adı 1. değere, {@code volumeRatio} adı 6. değere karşılık gelir;
+     * {@code YALNIZCA_TEMEL} kümesinde {@code fk} adı 7. değere karşılık gelir ve her
+     * kümede ad sayısı {@code dimension(type)} ile eşittir.
+     */
+    @Test
+    void kolonAdlariDegerDuzeniyleEslesir() {
+        FeatureVector fv = new FeatureVector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
+
+        String[] techNames = FeatureVector.featureNames(AnalysisType.TECHNICAL);
+        double[] techVals = fv.toArray(AnalysisType.TECHNICAL);
+        assertEquals(FeatureVector.dimension(AnalysisType.TECHNICAL), techNames.length);
+        assertEquals("rsi", techNames[0]);
+        assertEquals(1, techVals[0], 1e-9);
+        assertEquals("volumeRatio", techNames[5]);
+        assertEquals(6, techVals[5], 1e-9);
+
+        String[] fundNames = FeatureVector.featureNames(AnalysisType.FUNDAMENTAL);
+        double[] fundVals = fv.toArray(AnalysisType.FUNDAMENTAL);
+        assertEquals(FeatureVector.dimension(AnalysisType.FUNDAMENTAL), fundNames.length);
+        assertEquals("fk", fundNames[0]);
+        assertEquals(7, fundVals[0], 1e-9);
+    }
+
+    /**
+     * Analiz tipi başına öznitelik sayısının (matris sütun genişliğinin) doğruluğu.
+     * <p>
+     * Senaryo: üç analiz tipi için boyutlar sorulur. Beklenen davranış:
+     * {@code YALNIZCA_TEKNIK} 6, {@code YALNIZCA_TEMEL} 5 ve {@code TEKNIK_TEMEL} 11
+     * döner; kolon adı dizileri de aynı uzunluktadır.
+     */
+    @Test
+    void dimensionAnalizTipiBasinaDogruBoyutuDoner() {
+        assertEquals(6, FeatureVector.dimension(AnalysisType.TECHNICAL));
+        assertEquals(5, FeatureVector.dimension(AnalysisType.FUNDAMENTAL));
+        assertEquals(11, FeatureVector.dimension(AnalysisType.TECHNICAL_FUNDAMENTAL));
+
+        for (AnalysisType t : AnalysisType.values()) {
+            assertEquals(FeatureVector.dimension(t), FeatureVector.featureNames(t).length, t.name());
+        }
     }
 }

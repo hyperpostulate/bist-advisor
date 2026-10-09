@@ -2,6 +2,7 @@ package org.mesutormanli.bistadvisor;
 
 import org.mesutormanli.bistadvisor.cli.AdvisorCommands;
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import org.mesutormanli.bistadvisor.portfolio.Position;
 import org.springframework.boot.CommandLineRunner;
@@ -157,7 +158,8 @@ public class BistAdvisorApplication {
      * {@code init} komutunun argümanlarını ayrıştırır ve çağrıyı yürütür.
      * <p>
      * Desteklenen argümanlar: {@code --budget=} (varsayılan 50000), {@code --mode=},
-     * {@code --model=} ve {@code --pos=SEMBOL:lot:fiyat,...}. Her hata (geçersiz sayı,
+     * {@code --model=}, {@code --analiz=} (analiz tipi; {@code --analysis=} takma adıyla da
+     * alınır) ve {@code --pos=SEMBOL:lot:fiyat,...}. Her hata (geçersiz sayı,
      * eksik alan) ayrı satırda toplanır ve "Hatalar:" başlığı altında yazdırılır;
      * geçerli kısımlarla {@link AdvisorCommands#init} yine de çağrılır.
      *
@@ -166,7 +168,7 @@ public class BistAdvisorApplication {
      */
     private void runInit(AdvisorCommands commands, String[] args) {
         double budget = 50000;
-        String mode = null, model = null;
+        String mode = null, model = null, analysis = null;
         List<Position> positions = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         for (int i = 1; i < args.length; i++) {
@@ -175,6 +177,8 @@ public class BistAdvisorApplication {
                 if (a.startsWith("--budget=")) budget = Double.parseDouble(a.substring(9));
                 else if (a.startsWith("--mode=")) mode = a.substring(7);
                 else if (a.startsWith("--model=")) model = a.substring(8);
+                else if (a.startsWith("--analiz=")) analysis = a.substring(9);
+                else if (a.startsWith("--analysis=")) analysis = a.substring(11);
                 else if (a.startsWith("--pos=")) {
                     for (String p : a.substring(6).split(",")) {
                         String[] kv = p.split(":");
@@ -197,6 +201,6 @@ public class BistAdvisorApplication {
             System.out.println("Hatalar:");
             errors.forEach(System.out::println);
         }
-        commands.init(budget, mode, model, positions);
+        commands.init(budget, mode, model, analysis, positions);
     }
 }

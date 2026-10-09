@@ -107,6 +107,7 @@ org.mesutormanli.bistadvisor
 │   └── AdvisorCommands.java               # CLI komutları (init/run/confirm/status/train)
 ├── config/
 │   ├── AdvisorMode.java                   # Yatırım modu enum (CONSERVATIVE/BALANCED/AGGRESSIVE)
+│   ├── AnalysisType.java                  # Analiz tipi enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
 │   ├── AppConfig.java                     # Uygulama konfigürasyonu
 │   └── ModelType.java                     # ML model tipi enum (RANDOM_FOREST/SVM/KNN)
 ├── data/
@@ -115,7 +116,7 @@ org.mesutormanli.bistadvisor
 │   ├── MarketTime.java                    # Ortak piyasa saat dilimi + tazelik penceresi
 │   └── YahooClient.java                   # Yahoo Finance OHLCV + temel veri çekici (crumb, throttle, TTL önbellek)
 ├── features/
-│   ├── FeatureVector.java                 # 11 boyutlu özellik vektörü
+│   ├── FeatureVector.java                 # 11 boyutlu özellik vektörü (analiz tipine göre 6/5/11 kesilir)
 │   └── TechnicalFeatures.java             # Teknik göstergeler (RSI/SMA/MACD/volatilite)
 ├── model/
 │   ├── ClassSpace.java                    # Sınıf-etiket eşlemesi (güvenli tahmin)
@@ -129,7 +130,7 @@ org.mesutormanli.bistadvisor
 │   └── SvmStrategy.java                   # SVM one-vs-rest (SMILE Gaussian kernel)
 ├── portfolio/
 │   ├── PortfolioService.java              # Portföy servisi (state.yaml kalıcılık)
-│   ├── PortfolioState.java                # Portföy durumu (sermaye/nakit/mod/model/pozisyonlar)
+│   ├── PortfolioState.java                # Portföy durumu (sermaye/nakit/mod/model/analiz/pozisyonlar)
 │   └── Position.java                      # Pozisyon modeli (sembol/lot/maliyet)
 ├── web/
 │   ├── AdvisorController.java             # REST API kontrolcüsü (/api/*)
@@ -146,18 +147,19 @@ org.mesutormanli.bistadvisor
 | `ScoreGate` | Model türüne göre eşik yorumu (KNN'de oy ızgarasına yuvarlama) |
 | `AdvisorCommands` | CLI komut arayüzü: `init`, `run`, `confirm`, `status`, `train` |
 | `AdvisorMode` | 3 yatırım modu: TEMKİNLİ (%25 risk), DENGELİ (%50), AGRESİF (%75) |
+| `AnalysisType` | 3 analiz tipi: YALNIZCA_TEKNIK (6 teknik metrik), YALNIZCA_TEMEL (5 temel metrik), TEKNIK_TEMEL (11 metrik) |
 | `YahooClient` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker; crumb'ı her denemede yeniler, istekleri throttle eder, temel veriyi günlük TTL ile önbellekler |
 | `BistIndices` | BIST-30/50/100 ve sektör endekslerini sembol listeleriyle tanımlar |
 | `CacheStore` | Fiyat serilerini `cache/` dizininde CSV olarak önbelleğe alır |
 | `MarketTime` | Tek piyasa saat dilimi (`Europe/Istanbul`) + hafta sonu/tatil toleranslı tazelik penceresi |
-| `FeatureVector` | 11 özellik: RSI, SMA-20/50 oranı, MACD, volatilite, hacim, F/K, PD/DD, temettü, büyüme, ROE |
-| `ModelStrategy` | ML model arayüzü: `train(features, labels)`, `predict(features)` → {sınıf, skor} |
+| `FeatureVector` | 11 özellik (analiz tipine göre 6 teknik / 5 temel / 11 kesilir): RSI, SMA-20/50 oranı, MACD, volatilite, hacim, F/K, PD/DD, temettü, büyüme, ROE |
+| `ModelStrategy` | ML model arayüzü: `train(features, labels, analysisType)`, `predict(features)` → {sınıf, skor} |
 | `ClassSpace` | Sınıf-etiket eşlemesi: eksik sınıflarda güvenli tahmin (olasılık dizisi boyutu tuzağını önler) |
 | `RandomForestStrategy` | One-vs-rest RandomForest (gözlenen her sınıf için ikili sınıflandırıcı) |
 | `SvmStrategy` | One-vs-rest SVM (Gaussian kernel) |
 | `KnnStrategy` | k-NN sınıflandırıcı (k=5) |
 | `Labeler` | N günlük getiriye göre etiketleme: >%5 → AL, <-%5 → SAT, arada → TUT |
-| `ModelTrainer` | Canlı veriyle eğitim, HashMap ile bellek-içi önbellek |
+| `ModelTrainer` | Canlı veriyle eğitim (analiz tipinin metrik kümesiyle), TİP:ANALİZ:ENDEKS anahtarlı bellek-içi önbellek |
 | `PortfolioService` | state.yaml okuma/yazma, açık nakit muhasebesi (gerçekleşen kâr/zarar nakde yansır), kısmi satış, portföy kısıtları (maks 5 pozisyon) |
 | `AdvisorController` | REST API: portföy okuma/güncelleme, analiz, işlem onayı, konfigürasyon |
 | `BistAdvisorApplication` | Web modu (varsayılan) veya CLI modu (`--cli` / bilinen komut adı) |
@@ -199,9 +201,9 @@ Konfigürasyon, portföy yönetimi, analiz ve işlem onayı sağlayan REST kontr
 
 | Yöntem | Uç Nokta | Açıklama | HTTP Durumu |
 |--------|----------|----------|-------------|
-| `GET` | `/api/config` | Desteklenen modlar/modeller/endeksler + seçili değerler | 200 |
+| `GET` | `/api/config` | Desteklenen modlar/modeller/analiz tipleri/endeksler + seçili değerler | 200 |
 | `GET` | `/api/portfolio` | Mevcut portföy durumu | 200 |
-| `POST` | `/api/portfolio` | Portföyü güncelle (bütçe/mod/model/endeks/pozisyonlar) | 200 (`{"status":"ok\|warning\|error"}`) |
+| `POST` | `/api/portfolio` | Portföyü güncelle (bütçe/mod/model/analiz tipi/endeks/pozisyonlar) | 200 (`{"status":"ok\|warning\|error"}`) |
 | `GET` | `/api/portfolio-view` | Portföy + güncel fiyatlar + toplam değerler | 200 |
 | `POST` | `/api/analyze` | Günlük analizi çalıştır | 200 |
 | `POST` | `/api/confirm` | İşlemleri onayla | 200 |
@@ -219,9 +221,21 @@ Konfigürasyon, portföy yönetimi, analiz ve işlem onayı sağlayan REST kontr
 
 Risk yüzdesi, kullanılabilir nakdin alım adaylarına dağıtılan oranıdır. Modlar CLI/API'de `CONSERVATIVE`, `BALANCED`, `AGGRESSIVE` adlarıyla ya da etiketleriyle (`TEMKINLI`, `DENGELI`, `AGRESIF`) referans alınabilir; model anahtarları `random_forest`, `svm`, `knn`.
 
+### AnalysisType
+
+Analizde hangi metrik kümesinin (hem eğitim hem tahmin) kullanılacağını belirler; seçim `state.yaml` içindeki `analysisType` alanında persist edilir:
+
+| Analiz Tipi | Kullanılan Metrikler | Boyut |
+|-------------|----------------------|-------|
+| YALNIZCA_TEKNIK | Teknik göstergeler (1–6) | 6 |
+| YALNIZCA_TEMEL | Temel göstergeler (7–11) | 5 |
+| TEKNIK_TEMEL | Tüm metrikler (1–11) | 11 |
+
+Model, tahminle aynı analiz tipiyle eğitilir; önbellek anahtarı (`TİP:ANALİZ:ENDEKS`) sayesinde farklı metrik kümeleriyle eğitilmiş modeller birbirine karışmaz. **YALNIZCA_TEKNIK** modunda temel gösterge verisi hiç okunmaz/çekilmez; böylece güncel tarihli temel göstergelerin geçmişe uygulanmasından doğan geleceğe sızıntı (look-ahead bias) ortadan kalkar. Temel gösterge içeren modlarda analiz raporuna güncel tarihli temel veriye dair bir uyarı notu eklenir. Varsayılan `TECHNICAL_FUNDAMENTAL`'dır; `analysisType` alanı olmayan eski `state.yaml` dosyaları bu varsayılanla açılır. CLI/API'de `TECHNICAL`, `FUNDAMENTAL`, `TECHNICAL_FUNDAMENTAL` adlarıyla, anahtarlarıyla (`technical`, `fundamental`, `technical_fundamental`), etiketleriyle (`TEKNIK`, `TEMEL`, `TEKNIK_TEMEL`) ya da takma adlarıyla (`YALNIZCA_TEKNIK`, `YALNIZCA_TEMEL`, `TEKNIK_VE_TEMEL`) referans alınabilir.
+
 ### FeatureVector
 
-11 boyutlu özellik vektörü. `normalize()` her özniteliği sabit ölçeklerle `[0, 1]` aralığına indirir ve uç değerleri kırpar; eğitim ve tahmin bu normalize edilmiş vektörle yapılır.
+11 boyutlu özellik vektörü. `normalize()` her özniteliği sabit ölçeklerle `[0, 1]` aralığına indirir ve uç değerleri kırpar; eğitim ve tahmin bu normalize edilmiş vektörle yapılır. Vektör seçilen analiz tipine göre kesilir: teknik küme ilk 6 sütunu, temel küme son 5 sütunu kullanır; eğitim matrisi ve tahmin vektörü her zaman aynı sütun düzenini paylaşır.
 
 | # | Özellik | Kaynak |
 |---|---------|--------|
@@ -266,16 +280,16 @@ java -jar target/bist-advisor-0.1.0.jar
 Tarayıcıda `http://localhost:8080` açılır. Tek sayfa arayüz:
 
 1. **Mevcut Portföy**: Pozisyon ekleme/çıkarma, toplam sermaye güncelleme
-2. **Günlük Analiz**: Endeks/mod/model seçimi, analiz çalıştırma
+2. **Günlük Analiz**: Endeks/mod/analiz tipi/model seçimi, analiz çalıştırma
 3. **İşlem Onayı**: AL/SAT önerilerini onaylama
 
 ### CLI: Portföy Başlatma
 
 ```bash
-java -jar target/bist-advisor-0.1.0.jar init --budget=50000 --mode=BALANCED --model=RANDOM_FOREST --pos=THYAO:100:240,ASELS:50:351
+java -jar target/bist-advisor-0.1.0.jar init --budget=50000 --mode=BALANCED --analiz=TECHNICAL --model=RANDOM_FOREST --pos=THYAO:100:240,ASELS:50:351
 ```
 
-`--budget` toplam sermaye katkısıdır (kullanıcının koyduğu para). Örnek portföyde maliyet 24.000 + 17.550 = 41.550 TL olur, nakit 8.450 TL olarak kurulur.
+`--budget` toplam sermaye katkısıdır (kullanıcının koyduğu para). Örnek portföyde maliyet 24.000 + 17.550 = 41.550 TL olur, nakit 8.450 TL olarak kurulur. `--analiz` analiz tipini seçer (`TECHNICAL`, `FUNDAMENTAL`, `TECHNICAL_FUNDAMENTAL`; bkz. [AnalysisType](#analysistype)); `--analysis` takma adı da geçerlidir. Verilmezse `TECHNICAL_FUNDAMENTAL` kullanılır ve `state.yaml` içindeki `analysisType` alanına yazılır.
 
 > **Çalışma modu:** İlk argüman bilinen bir komut (`init/run/confirm/status/train`) ya da `--cli` bayrağı olduğunda CLI modu başlar; `--cli` sonradan da kullanılabilir (örn. `java -jar app.jar --cli train`). Diğer argümanlar (örn. `--spring.profiles.active=prod`, `--server.port=9090`) Spring yapılandırmasıdır ve uygulama **Web modunda** açılır. Bilinmeyen bir komut adı verilirse uygulama hata ile çıkar.
 
@@ -297,11 +311,15 @@ java -jar target/bist-advisor-0.1.0.jar confirm "THYAO,SAT,50,245.5" "AKBNK,AL,2
 java -jar target/bist-advisor-0.1.0.jar status
 ```
 
+Çıktı `Mod`/`Model`/`Analiz` satırlarıyla birlikte kayıtlı ayarları ve portföy özetini gösterir.
+
 ### CLI: Model Eğitimi
 
 ```bash
 java -jar target/bist-advisor-0.1.0.jar train
 ```
+
+Eğitim, kayıtlı analiz tipinin metrik kümesiyle yapılır; analiz tipi değişince model otomatik olarak yeniden eğitilir.
 
 ### API: Analiz
 
@@ -323,7 +341,7 @@ Tüm uç noktalar `/api` altında sunulur.
 
 | Uç Nokta | Yöntem | Açıklama | Yanıt |
 |----------|--------|----------|-------|
-| `/api/config` | GET | Konfigürasyon (modlar/modeller/endeksler) | JSON |
+| `/api/config` | GET | Konfigürasyon (modlar/modeller/analiz tipleri/endeksler) | JSON |
 | `/api/portfolio` | GET | Portföy durumu | `PortfolioState` |
 | `/api/portfolio` | POST | Portföyü güncelle | `{"status":"ok\|warning\|error"}` |
 | `/api/portfolio-view` | GET | Portföy + güncel fiyatlar | JSON |
@@ -350,7 +368,7 @@ Tüm uç noktalar `/api` altında sunulur.
 }
 ```
 
-`price`/`score` alanları veri/tahmin yoksa `null` döner (sahte değer üretilmez). `buySlots` doldurulabilecek **yeni** pozisyon sayısını verir; mevcut pozisyonlara ekleme yapmak slot harcamaz.
+`price`/`score` alanları veri/tahmin yoksa `null` döner (sahte değer üretilmez). `buySlots` doldurulabilecek **yeni** pozisyon sayısını verir; mevcut pozisyonlara ekleme yapmak slot harcamaz. Temel gösterge içeren analiz tiplerinde (`FUNDAMENTAL`, `TECHNICAL_FUNDAMENTAL`) `warnings` listesine temel göstergelerin güncel tarihli olduğuna dair bir not eklenir; `TECHNICAL` modunda eklenmez.
 
 ---
 
@@ -363,11 +381,12 @@ Testler JUnit Jupiter ile yazılmıştır ve ağa bağımlılığı yoktur. Gird
 | Test Sınıfı | Ne Test Eder |
 |-------------|--------------|
 | `BistAdvisorTest` | Teknik göstergeler (RSI, volatilite), etiketleyici (AL sınıflandırması), Yahoo JSON ayrıştırma |
-| `FeatureVectorTest` | Öznitelik normalizasyonu: ölçekleme, uç değer kırpma, immutability |
-| `ModelStrategiesTest` | Model stratejileri: sınıf ayrımı, eksik/tek sınıf güvenliği, KNN k=5 davranışı |
+| `FeatureVectorTest` | Öznitelik normalizasyonu: ölçekleme, uç değer kırpma, immutability, analiz tipine göre boyut kesme |
+| `AnalysisTypeTest` | Analiz tipi çözümleme: anahtar/takma ad eşlemeleri, bilinmeyen girdide varsayılan, metrik kümesi bayrakları |
+| `ModelStrategiesTest` | Model stratejileri: sınıf ayrımı, eksik/tek sınıf güvenliği, KNN k=5 davranışı, analiz tipi boyutlarıyla eğitim |
 | `AllocationPlannerTest` | Karar kuralları: SAT/AL çakışmaması, slot muhasebesi, satış sermayesinin bütçeye katılması, "veri yok" davranışı, skor doldurma |
 | `ScoreGateTest` | Model bazlı eşik yorumu: KNN'de oy ızgarasına yuvarlama + asgari komşu anlaşması |
-| `PortfolioServiceTest` | Nakit muhasebesi: gerçekleşen kâr/zararın nakde yansıması, kısmi/tam satış, negatif nakit, manuel güncelleme mutabakatı, `state.yaml` yükleme |
+| `PortfolioServiceTest` | Nakit muhasebesi: gerçekleşen kâr/zararın nakde yansıması, kısmi/tam satış, negatif nakit, manuel güncelleme mutabakatı, analiz tipi persist, `state.yaml` yükleme |
 | `CacheStoreTest` | Fiyat önbelleği: hafta sonu/tatil toleranslı tazelik penceresi, bozuk dosya güvenliği |
 | `CliModeDetectionTest` | CLI/Web ayrımı: komut tespiti, `--cli` bayrağı, Spring argümanlarının Web modunu bozmaması |
 
@@ -394,6 +413,9 @@ mvn test -Dtest=BistAdvisorTest
 - `normalizeDegerleriOlcekler()`: özniteliklerin sabit ölçeklerle [0,1]'e indirilmesi
 - `normalizeAsiriDegerleriKisar()`: uç değerlerin [0,1]'e kırpılması
 - `fromBarsHamDegerleriUretirVeNormalizeAyriNesneDoner()`: `normalize()`'ın değişmez (immutable) yeni nesne döndürmesi
+- `analizTipiMetrikKumeleriniKesar()`: teknik (ilk 6) ve temel (son 5) alt kümelerinin kesilmesi
+- `kolonAdlariDegerDuzeniyleEslesir()`: kolon adlarının değer dizisiyle sıradaşlığı
+- `dimensionAnalizTipiBasinaDogruBoyutuDoner()`: analiz tipi başına 6/5/11 boyut sayısı
 
 `ModelStrategiesTest` üç modelin ortak davranışını doğrular (model tipi başına parametrize):
 
@@ -402,6 +424,13 @@ mvn test -Dtest=BistAdvisorTest
 - `tekSinifliEgitimSabitTahminDoner()`: tek sınıflı eğitimde sabit tahmin
 - `knnBesKomsuIleKararVerir()`: KNN'in k=5 ile çoğunluk sınıfını seçmesi (k=1 olsaydı tersi olurdu)
 - `classSpaceEtiketleriGeriDonusturur()`: `ClassSpace` sıkıştırma/geri dönüşüm eşlemesi
+- `analizTipineGoreKesilmisBoyutlarlaCalisir()`: üç analiz tipinin matris genişlikleriyle eğitim/tahmin
+
+`AnalysisTypeTest` çözümleme sözleşmesini doğrular:
+
+- `fromKeyAnahtarTakmaAdVeEtiketleriCozer()`: anahtar, etiket ve takma adların çözümlenmesi
+- `fromKeyBilinmeyenGirdideVarsayilanaDuser()`: bilinmeyen girdide `TECHNICAL_FUNDAMENTAL` varsayılanı
+- `metrikKumesiBayraklariDogru()`: teknik/temel kullanım bayrakları (yalnız teknik modda temelin hiç okunmaması)
 
 `PortfolioServiceTest` portföy muhasebesini doğrular (geçici `state.yaml` dosyasıyla):
 
@@ -411,6 +440,9 @@ mvn test -Dtest=BistAdvisorTest
 - `fazlaSatisReddedilir()` / `nakitUzerindeAlimReddedilir()`: lot ve nakit sınırları
 - `negatifNakitDogrulamaylaBildirilir()`: sermaye aşımı uyarısı
 - `updatePortfolioButceDegisikliginiNakdeIsler()` / `updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler()`: manuel güncelleme mutabakatı
+- `analizTipiInitIleAyarlanirVeYamlaYazilir()`: analiz tipinin ayarlanıp `state.yaml`'a yazılması
+- `updatePortfolioAnalizTipiniGunceller()`: analiz tipi güncelleme + `null`'da koruma + takma ad çözümü
+- `analizTipiAlanOlmayanYamldaVarsayilanaDuser()`: `analysisType` alanı olmayan eski YAML'da varsayılana düşülmesi
 - `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` alanlarının aynen yüklenmesi
 
 `AllocationPlannerTest` karar kurallarını doğrular:
@@ -438,6 +470,7 @@ mvn test -Dtest=BistAdvisorTest
 | Kaynak bulunamadı | 200 OK (boş liste) |
 | Fiyat verisi alınamadı | 200 OK (`price: null`, "veri yok" — sahte fiyat üretilmez) |
 | Geçersiz portföy verisi | 200 OK (`{"status":"error"}`, kayıt yapılmaz) |
+| Geçersiz analiz tipi değeri | 200 OK (sessiz varsayılana düşülür: `TECHNICAL_FUNDAMENTAL`) |
 | Kural ihlali (ör. negatif nakit, fazla lot) | 200 OK (`{"status":"warning"}`, kayıt yapılır) |
 | Model eğitilemedi (endeks verisi yok) | 500 Internal Server Error |
 | Yahoo API hatası | Sessiz atlanır, boş veri döndürülür; etkilenen semboller uyarı listesinde |
@@ -583,6 +616,7 @@ org.mesutormanli.bistadvisor
 │   └── AdvisorCommands.java               # CLI commands (init/run/confirm/status/train)
 ├── config/
 │   ├── AdvisorMode.java                   # Investment mode enum (CONSERVATIVE/BALANCED/AGGRESSIVE)
+│   ├── AnalysisType.java                  # Analysis type enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
 │   ├── AppConfig.java                     # Application configuration
 │   └── ModelType.java                     # ML model enum (RANDOM_FOREST/SVM/KNN)
 ├── data/
@@ -590,7 +624,7 @@ org.mesutormanli.bistadvisor
 │   ├── CacheStore.java                    # Price series cache (CSV files)
 │   └── YahooClient.java                   # Yahoo Finance OHLCV + fundamentals fetcher
 ├── features/
-│   ├── FeatureVector.java                 # 11-dimensional feature vector
+│   ├── FeatureVector.java                 # 11-dimensional feature vector (sliced 6/5/11 per analysis type)
 │   └── TechnicalFeatures.java             # Technical indicators (RSI/SMA/MACD/volatility)
 ├── model/
 │   ├── ClassSpace.java                    # Label-index mapping (safe predictions)
@@ -604,7 +638,7 @@ org.mesutormanli.bistadvisor
 │   └── SvmStrategy.java                   # SVM one-vs-rest (SMILE Gaussian kernel)
 ├── portfolio/
 │   ├── PortfolioService.java              # Portfolio service (state.yaml persistence)
-│   ├── PortfolioState.java                # Portfolio state (budget/mode/model/positions)
+│   ├── PortfolioState.java                # Portfolio state (budget/mode/model/analysis type/positions)
 │   └── Position.java                      # Position model (symbol/lots/cost)
 ├── web/
 │   ├── AdvisorController.java             # REST API controller (/api/*)
@@ -619,17 +653,18 @@ org.mesutormanli.bistadvisor
 | `DailyAdvisor` | Generates daily BUY/SELL/HOLD recommendations by combining portfolio and ML model |
 | `AdvisorCommands` | CLI command interface: `init`, `run`, `confirm`, `status`, `train` |
 | `AdvisorMode` | 3 investment modes: CONSERVATIVE (25% risk), BALANCED (50%), AGGRESSIVE (75%) |
+| `AnalysisType` | 3 analysis types: TECHNICAL (6 technical metrics), FUNDAMENTAL (5 fundamental metrics), TECHNICAL_FUNDAMENTAL (11 metrics) |
 | `YahooClient` | Fetches OHLCV prices + fundamentals (P/E, P/B, dividend, ROE, growth) from Yahoo Finance |
 | `BistIndices` | Defines BIST-30/50/100 and sector indices with symbol lists |
 | `CacheStore` | Caches fetched price series as CSV files in `cache/` directory |
-| `FeatureVector` | 11 features: RSI, SMA-20/50 ratio, MACD, volatility, volume, P/E, P/B, dividend, growth, ROE |
-| `ModelStrategy` | ML model interface: `train(features, labels)`, `predict(features)` → {class, score} |
+| `FeatureVector` | 11 features (sliced as 6 technical / 5 fundamental / 11 per analysis type): RSI, SMA-20/50 ratio, MACD, volatility, volume, P/E, P/B, dividend, growth, ROE |
+| `ModelStrategy` | ML model interface: `train(features, labels, analysisType)`, `predict(features)` → {class, score} |
 | `ClassSpace` | Label-index mapping: safe predictions when classes are missing (avoids the probability-vector size pitfall) |
 | `RandomForestStrategy` | One-vs-rest RandomForest (one binary classifier per observed class) |
 | `SvmStrategy` | One-vs-rest SVM with Gaussian kernel |
 | `KnnStrategy` | k-NN classifier (k=5) |
 | `Labeler` | N-day return labeling: >5% → BUY, <-5% → SELL, else → HOLD |
-| `ModelTrainer` | Live data training with HashMap in-memory cache |
+| `ModelTrainer` | Live data training (with the analysis type's metric subset), TYPE:ANALYSIS:INDEX-keyed in-memory cache |
 | `PortfolioService` | state.yaml read/write, budget-cash reconciliation (budget = total capital, cash is derived), partial sells, portfolio constraints (max 5 positions) |
 | `AdvisorController` | REST API: portfolio read/update, analysis, confirmation, configuration |
 | `BistAdvisorApplication` | Web mode (no args) or CLI mode (with args) |
@@ -665,9 +700,9 @@ REST controller providing configuration, portfolio management, analysis, and tra
 
 | Method | Endpoint | Description | HTTP Status |
 |--------|----------|-------------|-------------|
-| `GET` | `/api/config` | Get supported modes/models/indices + current selection | 200 |
+| `GET` | `/api/config` | Get supported modes/models/analysis types/indices + current selection | 200 |
 | `GET` | `/api/portfolio` | Get current portfolio state | 200 |
-| `POST` | `/api/portfolio` | Save portfolio (budget/mode/model/index/positions) | 200 (`{"status":"ok\|warning\|error"}`) |
+| `POST` | `/api/portfolio` | Save portfolio (budget/mode/model/analysis type/index/positions) | 200 (`{"status":"ok\|warning\|error"}`) |
 | `GET` | `/api/portfolio-view` | Get portfolio with current prices and totals | 200 |
 | `POST` | `/api/analyze` | Run daily analysis | 200 |
 | `POST` | `/api/confirm` | Confirm transactions | 200 |
@@ -685,9 +720,21 @@ Three investment modes with configurable thresholds:
 
 The risk percentage is the share of available cash distributed across buy candidates. Modes can be referenced in the CLI/API as `CONSERVATIVE`, `BALANCED`, `AGGRESSIVE` or by their labels (`TEMKINLI`, `DENGELI`, `AGRESIF`); model keys are `random_forest`, `svm`, `knn`.
 
+### AnalysisType
+
+Determines which metric subset is used for the analysis (both training and prediction); the selection is persisted in the `analysisType` field of `state.yaml`:
+
+| Analysis Type | Metrics Used | Dimensionality |
+|---------------|--------------|----------------|
+| TECHNICAL | Technical indicators (1–6) | 6 |
+| FUNDAMENTAL | Fundamental indicators (7–11) | 5 |
+| TECHNICAL_FUNDAMENTAL | All metrics (1–11) | 11 |
+
+The model is trained with the same analysis type as the prediction; the cache key (`TYPE:ANALYSIS:INDEX`) keeps models trained on different metric subsets apart. In **TECHNICAL** mode fundamental data is never read/fetched, eliminating the look-ahead bias caused by applying current-dated fundamentals to history. In modes that use fundamentals, a warning note about the fundamentals being current-dated is appended to the analysis report. The default is `TECHNICAL_FUNDAMENTAL`; legacy `state.yaml` files without an `analysisType` field open with this default. In the CLI/API the type can be referenced as `TECHNICAL`, `FUNDAMENTAL`, `TECHNICAL_FUNDAMENTAL`, by key (`technical`, `fundamental`, `technical_fundamental`), by label (`TEKNIK`, `TEMEL`, `TEKNIK_TEMEL`) or by alias (`YALNIZCA_TEKNIK`, `YALNIZCA_TEMEL`, `TEKNIK_VE_TEMEL`).
+
 ### FeatureVector
 
-11-dimensional feature vector. `normalize()` scales every feature into `[0, 1]` with fixed divisors and clamps extreme values; training and prediction both run on this normalized vector.
+11-dimensional feature vector. `normalize()` scales every feature into `[0, 1]` with fixed divisors and clamps extreme values; training and prediction both run on this normalized vector. The vector is sliced per the selected analysis type: the technical subset uses the first 6 columns, the fundamental subset the last 5; the training matrix and the prediction vector always share the same column order.
 
 | # | Feature | Source |
 |---|---------|--------|
@@ -728,16 +775,16 @@ java -jar target/bist-advisor-0.1.0.jar
 Open `http://localhost:8080` in a browser. The single-page app provides:
 
 1. **Current Portfolio**: Add/remove positions, update total capital
-2. **Daily Analysis**: Select index/mode/model, run analysis
+2. **Daily Analysis**: Select index/mode/analysis type/model, run analysis
 3. **Transaction Confirmation**: Review and confirm BUY/SELL recommendations
 
 ### CLI: Initialize Portfolio
 
 ```bash
-java -jar target/bist-advisor-0.1.0.jar init --budget=50000 --mode=BALANCED --model=RANDOM_FOREST --pos=THYAO:100:240,ASELS:50:351
+java -jar target/bist-advisor-0.1.0.jar init --budget=50000 --mode=BALANCED --analiz=TECHNICAL --model=RANDOM_FOREST --pos=THYAO:100:240,ASELS:50:351
 ```
 
-`--budget` is the total capital (cash + positions' cost basis). In the sample portfolio the cost basis is 24,000 + 17,550 = 41,550 TL, leaving 8,450 TL of cash.
+`--budget` is the total capital (cash + positions' cost basis). In the sample portfolio the cost basis is 24,000 + 17,550 = 41,550 TL, leaving 8,450 TL of cash. `--analiz` selects the analysis type (`TECHNICAL`, `FUNDAMENTAL`, `TECHNICAL_FUNDAMENTAL`; see [AnalysisType](#analysistype)); the `--analysis` alias also works. When omitted, `TECHNICAL_FUNDAMENTAL` is used and persisted in the `analysisType` field of `state.yaml`.
 
 ### CLI: Daily Analysis
 
@@ -757,11 +804,15 @@ java -jar target/bist-advisor-0.1.0.jar confirm "THYAO,SAT,50,245.5" "AKBNK,AL,2
 java -jar target/bist-advisor-0.1.0.jar status
 ```
 
+The output reports the stored settings (`Mod`/`Model`/`Analiz` lines) along with the portfolio summary.
+
 ### CLI: Train Model
 
 ```bash
 java -jar target/bist-advisor-0.1.0.jar train
 ```
+
+Training uses the metric subset of the stored analysis type; changing the analysis type retrains the model automatically.
 
 ### API: Analysis
 
@@ -783,7 +834,7 @@ All endpoints are served under `/api`.
 
 | Endpoint | Method | Description | Response |
 |----------|--------|-------------|----------|
-| `/api/config` | GET | Configuration (modes/models/indices) | JSON |
+| `/api/config` | GET | Configuration (modes/models/analysis types/indices) | JSON |
 | `/api/portfolio` | GET | Portfolio state | `PortfolioState` |
 | `/api/portfolio` | POST | Update portfolio | `{"status":"ok\|warning\|error"}` |
 | `/api/portfolio-view` | GET | Portfolio with current prices | JSON |
@@ -808,6 +859,8 @@ All endpoints are served under `/api`.
 }
 ```
 
+When the analysis type uses fundamentals (`FUNDAMENTAL`, `TECHNICAL_FUNDAMENTAL`), a note about the fundamentals being current-dated is appended to the `warnings` array; in `TECHNICAL` mode no such note is added.
+
 ---
 
 ## Testing
@@ -819,9 +872,10 @@ Tests use JUnit Jupiter with no network dependency. Inputs are synthetic price s
 | Test Class | What It Tests |
 |------------|---------------|
 | `BistAdvisorTest` | Technical features (RSI, volatility), Labeler (BUY classification), Yahoo JSON parsing |
-| `FeatureVectorTest` | Feature normalization: scaling, clamping of extremes, immutability |
-| `ModelStrategiesTest` | Model strategies: class separation, missing/single-class safety, KNN k=5 behavior |
-| `PortfolioServiceTest` | Portfolio accounting: partial sells, budget validation, `state.yaml` loading |
+| `FeatureVectorTest` | Feature normalization: scaling, clamping of extremes, immutability, per-analysis-type slicing |
+| `AnalysisTypeTest` | Analysis type resolution: key/alias mappings, fallback default on unknown input, metric-subset flags |
+| `ModelStrategiesTest` | Model strategies: class separation, missing/single-class safety, KNN k=5 behavior, training with analysis-type dimensions |
+| `PortfolioServiceTest` | Portfolio accounting: partial sells, budget validation, analysis type persistence, `state.yaml` loading |
 
 ### Running Tests
 
@@ -846,6 +900,9 @@ mvn test -Dtest=BistAdvisorTest
 - `normalizeDegerleriOlcekler()`: features scaled into [0,1] with fixed divisors
 - `normalizeAsiriDegerleriKisar()`: extreme values clamped into [0,1]
 - `fromBarsHamDegerleriUretirVeNormalizeAyriNesneDoner()`: `normalize()` returns a new immutable instance
+- `analizTipiMetrikKumeleriniKesar()`: technical (first 6) and fundamental (last 5) subsets are sliced out
+- `kolonAdlariDegerDuzeniyleEslesir()`: column names match the value array order
+- `dimensionAnalizTipiBasinaDogruBoyutuDoner()`: 6/5/11 dimensionality per analysis type
 
 `ModelStrategiesTest` verifies the shared behavior of all three models (parameterized per model type):
 
@@ -854,6 +911,13 @@ mvn test -Dtest=BistAdvisorTest
 - `tekSinifliEgitimSabitTahminDoner()`: constant prediction for single-class training
 - `knnBesKomsuIleKararVerir()`: KNN picks the majority class with k=5 (k=1 would pick the other)
 - `classSpaceEtiketleriGeriDonusturur()`: `ClassSpace` compress/decompress round-trip
+- `analizTipineGoreKesilmisBoyutlarlaCalisir()`: training/prediction with the matrix widths of all three analysis types
+
+`AnalysisTypeTest` verifies the resolution contract:
+
+- `fromKeyAnahtarTakmaAdVeEtiketleriCozer()`: keys, labels and aliases are resolved
+- `fromKeyBilinmeyenGirdideVarsayilanaDuser()`: unknown input falls back to `TECHNICAL_FUNDAMENTAL`
+- `metrikKumesiBayraklariDogru()`: technical/subset usage flags (fundamentals never read in technical-only mode)
 
 `PortfolioServiceTest` verifies portfolio accounting (with a temp `state.yaml`):
 
@@ -861,6 +925,9 @@ mvn test -Dtest=BistAdvisorTest
 - `fazlaSatisReddedilir()` / `tamSatisPozisyonuKaldirir()`: lot limits and position closing
 - `nakitUzerindeAlimReddedilir()`: buys beyond available cash are rejected
 - `butceAsimiDogrulamaylaBildirilir()`: capital-overspend warning
+- `analizTipiInitIleAyarlanirVeYamlaYazilir()`: analysis type set via init and written to `state.yaml`
+- `updatePortfolioAnalizTipiniGunceller()`: analysis type update + preservation on `null` + alias resolution
+- `analizTipiAlanOlmayanYamldaVarsayilanaDuser()`: legacy YAML without an `analysisType` field falls back to the default
 - `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` fields are loaded as-is
 
 ---
@@ -872,6 +939,7 @@ mvn test -Dtest=BistAdvisorTest
 | Successful analysis | 200 OK |
 | Resource not found | 200 OK (empty list) |
 | Invalid portfolio payload | 200 OK (`{"status":"error"}`, nothing is saved) |
+| Invalid analysis type value | 200 OK (silently falls back to `TECHNICAL_FUNDAMENTAL`) |
 | Rule violation (e.g. cash overrun, excess lots) | 200 OK (`{"status":"warning"}`, saved) |
 | Model cannot be trained (no index data) | 500 Internal Server Error |
 | Yahoo API failure | Silently skipped, empty data returned |

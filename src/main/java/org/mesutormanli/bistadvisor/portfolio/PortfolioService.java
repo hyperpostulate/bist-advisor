@@ -1,6 +1,7 @@
 package org.mesutormanli.bistadvisor.portfolio;
 
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.AppConfig;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,6 +70,7 @@ public class PortfolioService {
         copy.cash = state.cash;
         copy.advisorMode = state.advisorMode;
         copy.modelType = state.modelType;
+        copy.analysisType = state.analysisType;
         copy.selectedIndex = state.selectedIndex;
         copy.lastRunDate = state.lastRunDate;
         copy.positions = new ArrayList<>();
@@ -155,6 +157,14 @@ public class PortfolioService {
     public synchronized ModelType modelType() { return ModelType.fromKey(state.modelType); }
 
     /**
+     * Durumdaki analiz tipini enum'a çözer.
+     *
+     * @return çözümlenen {@link AnalysisType}; değer geçersizse ya da alan yoksa
+     *         varsayılan olarak {@link AnalysisType#TECHNICAL_FUNDAMENTAL}
+     */
+    public synchronized AnalysisType analysisType() { return AnalysisType.fromKey(state.analysisType); }
+
+    /**
      * Durum üzerinde verilen değişikliği uygular, pozisyonları sıralar ve diske yazar.
      * <p>
      * Örneğin {@code lastRunDate} güncellemesi için kullanılır.
@@ -177,13 +187,16 @@ public class PortfolioService {
      * @param budget      başlangıç sermayesi (TL)
      * @param advisorMode danışman modu adı (null ise eskisi korunur)
      * @param modelType   model adı (null ise eskisi korunur)
+     * @param analysisType analiz tipi adı (null ise eskisi korunur)
      * @param positions   açılacak pozisyonlar (kopyalanır)
      */
     public synchronized void initPortfolio(double budget, String advisorMode,
-                                           String modelType, List<Position> positions) {
+                                           String modelType, String analysisType,
+                                           List<Position> positions) {
         state.budget = budget;
         if (advisorMode != null) state.advisorMode = advisorMode;
         if (modelType != null) state.modelType = modelType;
+        if (analysisType != null) state.analysisType = analysisType;
         state.positions = positions != null ? new ArrayList<>(positions) : new ArrayList<>();
         sortPositions();
         state.cash = budget - investedCost();
@@ -196,16 +209,18 @@ public class PortfolioService {
      * Bütçe farkı nakde eklenir/çıkarılır (mutlak fark 0.01 TL toleransın altındaysa
      * nakde dokunulmaz). Yeni pozisyon listesi verilirse eski yatırılan maliyet ile
      * yenisi arasındaki fark nakde işlenir: pozisyon eklemek nakdi maliyeti kadar
-     * azaltır, çıkarmak artırır. Mod, model ve endeks null değilse güncellenir.
+     * azaltır, çıkarmak artırır. Mod, model, analiz tipi ve endeks null değilse güncellenir.
      *
      * @param budget      yeni bütçe (TL)
      * @param advisorMode danışman modu adı (null ise korunur)
      * @param modelType   model adı (null ise korunur)
+     * @param analysisType analiz tipi adı (null ise korunur)
      * @param indexName   endeks adı (null ise korunur)
      * @param positions   yeni pozisyon listesi (null ise korunur; kopyalanır)
      */
     public synchronized void updatePortfolio(double budget, String advisorMode, String modelType,
-                                             String indexName, List<Position> positions) {
+                                             String analysisType, String indexName,
+                                             List<Position> positions) {
         double cash = state.cash;
         if (budget > 0 && Math.abs(budget - state.budget) > TOLERANCE) {
             cash += budget - state.budget;
@@ -219,6 +234,7 @@ public class PortfolioService {
         }
         if (advisorMode != null) state.advisorMode = advisorMode;
         if (modelType != null) state.modelType = modelType;
+        if (analysisType != null) state.analysisType = analysisType;
         if (indexName != null) state.selectedIndex = indexName;
         state.cash = cash;
         write();

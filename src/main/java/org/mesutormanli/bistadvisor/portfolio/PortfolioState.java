@@ -1,6 +1,7 @@
 package org.mesutormanli.bistadvisor.portfolio;
 
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
 
 import java.util.ArrayList;
@@ -13,6 +14,8 @@ import java.util.List;
  * Alanlar: {@code budget} başlangıç sermayesi (TL); {@code cash} serbest nakit (TL);
  * {@code advisorMode} danışman modu adı (varsayılan {@code BALANCED});
  * {@code modelType} model adı (varsayılan {@code RANDOM_FOREST});
+ * {@code analysisType} son kullanılan analiz tipi (metrik kümesi; varsayılan
+ * {@code TECHNICAL_FUNDAMENTAL});
  * {@code selectedIndex} endeks adı (varsayılan {@code BIST_30});
  * {@code positions} pozisyon listesi (varsayılan boş);
  * {@code lastRunDate} son analiz tarihi (null olabilir).
@@ -26,6 +29,8 @@ public class PortfolioState {
     public String advisorMode = AdvisorMode.BALANCED.name();
 
     public String modelType = ModelType.RANDOM_FOREST.name();
+
+    public String analysisType = AnalysisType.TECHNICAL_FUNDAMENTAL.name();
 
     public String selectedIndex = "BIST_30";
 

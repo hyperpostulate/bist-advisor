@@ -1,5 +1,6 @@
 package org.mesutormanli.bistadvisor.features;
 
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.data.YahooClient.Fundamentals;
 
 /**
@@ -27,26 +28,95 @@ public record FeatureVector(
         double dividendYield, double profitGrowth, double roe
 ) {
 
+    /** Teknik gösterge kolon adları; {@link #toArray()} düzenindeki ilk 6 sütunun adları. */
+    private static final String[] TECHNICAL_NAMES = {
+            "rsi", "sma20Ratio", "sma50Ratio", "macd", "volatility", "volumeRatio"
+    };
+
+    /** Temel gösterge kolon adları; {@link #toArray()} düzenindeki son 5 sütunun adları. */
+    private static final String[] FUNDAMENTAL_NAMES = {
+            "fk", "pdDd", "dividendYield", "profitGrowth", "roe"
+    };
+
     /**
-     * Modelin beklediği öznitelik kolon adlarını döndürür.
+     * Modelin beklediği tüm (11) öznitelik kolon adlarını döndürür.
      *
      * @return FeatureFrame/SMILE matris düzeninde 11 kolon adı
+     * @implNote {@code featureNames(AnalysisType.TECHNICAL_FUNDAMENTAL)} çağrısına eşdeğerdir.
      */
     public static String[] featureNames() {
-        return new String[]{
-                "rsi", "sma20Ratio", "sma50Ratio", "macd", "volatility",
-                "volumeRatio", "fk", "pdDd", "dividendYield", "profitGrowth", "roe"
-        };
+        return featureNames(AnalysisType.TECHNICAL_FUNDAMENTAL);
     }
 
     /**
-     * Vektörü FeatureFrame/SMILE matris düzeninde {@code double[]} dizisine dönüştürür.
+     * Analiz tipinin kullandığı öznitelik kolon adlarını döndürür.
+     *
+     * <p>Sütun düzeni sabittir: önce teknik göstergeler (varsa), sonra temel göstergeler
+     * (varsa). Eğitim matrisi ve tahmin vektörü bu düzen üzerinden kurulduğu için
+     * {@link #toArray(org.mesutormanli.bistadvisor.config.AnalysisType)} ile birebir
+     * eşleşir.</p>
+     *
+     * @param type analiz tipi ({@code YALNIZCA_TEKNIK} 6 sütun, {@code YALNIZCA_TEMEL}
+     *             5 sütun, {@code TEKNIK_TEMEL} 11 sütun)
+     * @return FeatureFrame/SMILE matris düzeninde kolon adları
+     */
+    public static String[] featureNames(AnalysisType type) {
+        if (type.usesTechnical() && type.usesFundamental()) {
+            String[] all = new String[TECHNICAL_NAMES.length + FUNDAMENTAL_NAMES.length];
+            System.arraycopy(TECHNICAL_NAMES, 0, all, 0, TECHNICAL_NAMES.length);
+            System.arraycopy(FUNDAMENTAL_NAMES, 0, all, TECHNICAL_NAMES.length, FUNDAMENTAL_NAMES.length);
+            return all;
+        }
+        return (type.usesTechnical() ? TECHNICAL_NAMES : FUNDAMENTAL_NAMES).clone();
+    }
+
+    /**
+     * Analiz tipinin kullandığı öznitelik sayısını (matris sütun genişliğini) döndürür.
+     *
+     * @param type analiz tipi
+     * @return {@code YALNIZCA_TEKNIK} için 6, {@code YALNIZCA_TEMEL} için 5,
+     *         {@code TEKNIK_TEMEL} için 11
+     */
+    public static int dimension(AnalysisType type) {
+        return (type.usesTechnical() ? TECHNICAL_NAMES.length : 0)
+                + (type.usesFundamental() ? FUNDAMENTAL_NAMES.length : 0);
+    }
+
+    /**
+     * Vektörü FeatureFrame/SMILE matris düzeninde (tüm 11 bileşenle) {@code double[]} dizisine
+     * dönüştürür.
      *
      * @return bileşen sırası {@link #featureNames()} ile eşleşen 11 elemanlı dizi
+     * @implNote {@code toArray(AnalysisType.TECHNICAL_FUNDAMENTAL)} çağrısına eşdeğerdir.
      */
     public double[] toArray() {
-        return new double[]{rsi, sma20Ratio, sma50Ratio, macd, volatility,
-                volumeRatio, fk, pdDd, dividendYield, profitGrowth, roe};
+        return toArray(AnalysisType.TECHNICAL_FUNDAMENTAL);
+    }
+
+    /**
+     * Vektörü analiz tipinin kullandığı bileşenlerle FeatureFrame/SMILE matris düzeninde
+     * {@code double[]} dizisine dönüştürür.
+     *
+     * <p>Yalnızca seçili metrikler yazılır: önce teknik göstergeler (kullanılıyorsa),
+     * sonra temel göstergeler (kullanılıyorsa). Böylece eğitim matrisi ve tahmin vektörü
+     * aynı analiz tipiyle aynı genişliğe ve düzene sahip olur.</p>
+     *
+     * @param type analiz tipi
+     * @return bileşen sırası {@link #featureNames(AnalysisType)} ile eşleşen dizi
+     *         ({@code dimension(type)} elemanlı)
+     */
+    public double[] toArray(AnalysisType type) {
+        double[] technical = {rsi, sma20Ratio, sma50Ratio, macd, volatility, volumeRatio};
+        double[] fundamental = {fk, pdDd, dividendYield, profitGrowth, roe};
+        boolean useTech = type.usesTechnical();
+        boolean useFund = type.usesFundamental();
+        if (useTech && useFund) {
+            double[] all = new double[technical.length + fundamental.length];
+            System.arraycopy(technical, 0, all, 0, technical.length);
+            System.arraycopy(fundamental, 0, all, technical.length, fundamental.length);
+            return all;
+        }
+        return (useTech ? technical : fundamental).clone();
     }
 
     /**

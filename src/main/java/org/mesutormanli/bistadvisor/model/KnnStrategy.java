@@ -1,5 +1,6 @@
 package org.mesutormanli.bistadvisor.model;
 
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import smile.classification.KNN;
 
@@ -26,11 +27,13 @@ public final class KnnStrategy implements ModelStrategy {
      * sınıflı eğitim hatasını önlemek için model kurmaz. Komşu sayısı
      * {@code min(DEFAULT_K = 5, örnek sayısı)} olarak ayarlanır.
      *
-     * @param features eğitim seti öznitelik matrisi ({@code double[N][11]})
+     * @param features eğitim seti öznitelik matrisi ({@code double[N][k]}; {@code k} =
+     *                 {@code FeatureVector.dimension(type)})
      * @param labels   eğitim seti etiketleri ({@code int[N]}; 0=AL, 1=SAT, 2=TUT)
+     * @param type     eğitimde kullanılan analiz tipi; matrisin sütun sayısını belirler
      */
     @Override
-    public synchronized void train(double[][] features, int[] labels) {
+    public synchronized void train(double[][] features, int[] labels, AnalysisType type) {
         this.classes = ClassSpace.of(labels);
         this.model = null;
         if (classes.size() == 1) return;
@@ -45,7 +48,7 @@ public final class KnnStrategy implements ModelStrategy {
      * o sınıfı güven {@code 1.0} ile döner. Aksi halde komşu oylamasının olasılık dağılımı
      * doldurulur, kazanan sınıf ve o sınıfın olasılık değeri iki elemanlı dizi olarak verilir.
      *
-     * @param features 11 boyutlu öznitelik vektörü
+     * @param features analiz tipinin boyutunda öznitelik vektörü
      * @return 2 elemanlı dizi: {@code [sınıf etiketi, olasılık/skor]}
      */
     @Override

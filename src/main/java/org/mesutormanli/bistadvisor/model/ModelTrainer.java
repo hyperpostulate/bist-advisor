@@ -1,5 +1,6 @@
 package org.mesutormanli.bistadvisor.model;
 
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.AppConfig;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import org.mesutormanli.bistadvisor.data.BistIndices;
@@ -20,14 +21,18 @@ import java.util.Map;
 
 /**
  * Spring servisi: sınıflandırma modellerini canlı veriden eğitir ve eğitilmiş modelleri
- * bellekte {@code Map<String, ModelStrategy>} içinde TİP:ENDEKS anahtarıyla saklar.
+ * bellekte {@code Map<String, ModelStrategy>} içinde TİP:ANALİZ:ENDEKS anahtarıyla saklar.
  *
  * <p>Modeller diske kaydedilmez; yalnızca çalışma süresince bellekte tutulur (log mesajı:
  * "bellekte"). Eğitim verisi, endeksteki her sembol için yüklenen fiyat serilerinden
  * geçmişe genişleyen pencerelerle ve ileriye bakışlı etiketlemeyle
- * ({@link Labeler#labelFor}) üretilir. {@link #getOrTrain(ModelType, String)} önbellekten
- * döndürür ya da kurar/eğitir/önbelleğe alar; {@link #train(ModelType, String)} her zaman
- * yeniden eğitir. Her iki metot da senkrondur.
+ * ({@link Labeler#labelFor}) üretilir. Öznitelikler seçilen {@link AnalysisType}'ın metrik
+ * kümesiyle kesilir: {@code YALNIZCA_TEKNIK} modunda temel gösterge verisi ne eğitimde ne
+ * tahminde kullanılmaz (ve Yahoo temel veri isteği hiç yapılmaz); bu mod, güncel tarihli
+ * temel göstergelerin geçmişe uygulanmasından doğan geleceğe sızıntıyı (look-ahead bias)
+ * tamamen kaldırır. {@link #getOrTrain(ModelType, AnalysisType, String)} önbellekten
+ * döndürür ya da kurar/eğitir/önbelleğe alar; {@link #train(ModelType, AnalysisType, String)}
+ * her zaman yeniden eğitir. Her iki metot da senkrondur.
  */
 @Service
 public class ModelTrainer {
@@ -58,50 +63,56 @@ public class ModelTrainer {
     }
 
     /**
-     * Oluşturur: model önbelleği için TİP:ENDEKS anahtarını hesaplar.
+     * Oluşturur: model önbelleği için TİP:ANALİZ:ENDEKS anahtarını hesaplar.
      *
-     * @param type      model türü
-     * @param indexName endeks adı (büyük harfe çevrilir)
-     * @return {@code "TİP:ENDEKS"} biçiminde önbellek anahtarı
+     * @param type         model türü
+     * @param analysisType analiz tipi (metrik kümesi)
+     * @param indexName    endeks adı (büyük harfe çevrilir)
+     * @return {@code "TİP:ANALİZ:ENDEKS"} biçiminde önbellek anahtarı
+     * @implNote Anahtar analiz tipini de taşıdığı için farklı metrik kümeleriyle eğitilmiş
+     *           modeller birbirine karışmaz; boyut uyuşmazlığı bu sayede imkânsızdır.
      */
-    private static String cacheKey(ModelType type, String indexName) {
-        return type.name() + ":" + (indexName != null ? indexName.toUpperCase() : "");
+    private static String cacheKey(ModelType type, AnalysisType analysisType, String indexName) {
+        return type.name() + ":" + analysisType.name() + ":"
+                + (indexName != null ? indexName.toUpperCase() : "");
     }
 
     /**
      * Döndürür: önbellekteki modeli verir; yoksa kurar, eğitir ve önbelleğe alar.
      *
-     * @param type      model türü
-     * @param indexName endeks adı
+     * @param type         model türü
+     * @param analysisType analiz tipi (metrik kümesi)
+     * @param indexName    endeks adı
      * @return eğitilmiş {@link ModelStrategy} örneği (önbellekte varsa o döndürülür)
      * @throws IllegalStateException eğitim verisi hiç üretilemezse
      */
-    public synchronized ModelStrategy getOrTrain(ModelType type, String indexName) {
-        String key = cacheKey(type, indexName);
+    public synchronized ModelStrategy getOrTrain(ModelType type, AnalysisType analysisType, String indexName) {
+        String key = cacheKey(type, analysisType, indexName);
         ModelStrategy s = cache.get(key);
         if (s != null) return s;
-        TrainingSet ts = buildTrainingSet(indexName);
+        TrainingSet ts = buildTrainingSet(indexName, analysisType);
         ModelStrategy strategy = ModelStrategyFactory.create(type);
-        strategy.train(ts.features, ts.labels);
+        strategy.train(ts.features, ts.labels, analysisType);
         cache.put(key, strategy);
-        log.info("Model egitildi (bellekte): {}:{} (ornek={})", type, indexName, ts.labels.length);
+        log.info("Model egitildi (bellekte): {}:{}:{} (ornek={})", type, analysisType, indexName, ts.labels.length);
         return strategy;
     }
 
     /**
      * Eğitir: modeli her zaman yeniden kurar ve önbelleği günceller.
      *
-     * @param type      model türü
-     * @param indexName endeks adı
+     * @param type         model türü
+     * @param analysisType analiz tipi (metrik kümesi)
+     * @param indexName    endeks adı
      * @return yeni eğitilmiş {@link ModelStrategy} örneği
      * @throws IllegalStateException eğitim verisi hiç üretilemezse
      */
-    public synchronized ModelStrategy train(ModelType type, String indexName) {
-        TrainingSet ts = buildTrainingSet(indexName);
+    public synchronized ModelStrategy train(ModelType type, AnalysisType analysisType, String indexName) {
+        TrainingSet ts = buildTrainingSet(indexName, analysisType);
         ModelStrategy s = ModelStrategyFactory.create(type);
-        s.train(ts.features, ts.labels);
-        cache.put(cacheKey(type, indexName), s);
-        log.info("Model egitildi (bellekte): {}:{} (ornek={})", type, indexName, ts.labels.length);
+        s.train(ts.features, ts.labels, analysisType);
+        cache.put(cacheKey(type, analysisType, indexName), s);
+        log.info("Model egitildi (bellekte): {}:{}:{} (ornek={})", type, analysisType, indexName, ts.labels.length);
         return s;
     }
 
@@ -115,13 +126,18 @@ public class ModelTrainer {
      * ({@code end = bars.size() - horizon}), böylece etiketin geleceği her zaman görür.
      * Her örnek için geçmişe genişleyen pencere ({@code bars.subList(0, i + 1)}) üzerinden
      * öznitelik vektörü üretilir ve etiket {@link Labeler#labelFor} ile verilir.
-     * Ufuk {@code labelHorizonDays} (varsayılan 20, {@code bist.model.label-horizon-days}).
+     * Üretilen vektörler {@link FeatureVector#toArray(AnalysisType)} ile seçilen analiz
+     * tipinin metrik kümesine kesilir; temel göstergeler yalnızca analiz tipi
+     * {@link AnalysisType#usesFundamental()} ise çekilir (teknik modda temel veriye hiç
+     * dokunulmaz). Ufuk {@code labelHorizonDays} (varsayılan 20,
+     * {@code bist.model.label-horizon-days}).
      *
-     * @param indexName endeks adı
+     * @param indexName    endeks adı
+     * @param analysisType eğitimde kullanılacak metrik kümesi
      * @return eğitim seti ({@link TrainingSet}: özellik matrisi + etiket dizisi)
      * @throws IllegalStateException hiçbir sembol için örnek üretilemezse
      */
-    private TrainingSet buildTrainingSet(String indexName) {
+    private TrainingSet buildTrainingSet(String indexName, AnalysisType analysisType) {
         List<double[]> rows = new ArrayList<>();
         List<Integer> labels = new ArrayList<>();
         int horizon = appConfig.labelHorizonDays();
@@ -129,13 +145,13 @@ public class ModelTrainer {
         for (String sym : symbols) {
             List<Bar> bars = loadSeries(sym);
             if (bars.size() <= horizon + 5) continue;
-            Fundamentals f = yahoo.fetchFundamentals(sym);
+            Fundamentals f = analysisType.usesFundamental() ? yahoo.fetchFundamentals(sym) : null;
             int end = bars.size() - horizon;
             int windowSize = Math.min(bars.size(), 100);
             for (int i = Math.max(0, end - windowSize); i < end; i++) {
                 List<Bar> window = bars.subList(0, i + 1);
                 FeatureVector fv = FeatureVector.fromBars(f, window);
-                rows.add(fv.normalize().toArray());
+                rows.add(fv.normalize().toArray(analysisType));
                 labels.add(Labeler.labelFor(bars, horizon, i));
             }
         }
@@ -175,7 +191,8 @@ public class ModelTrainer {
     /**
      * Sarar: bir eğitim setinin özellik matrisi ve etiket dizisini birlikte taşır.
      *
-     * @param features özellik matrisi ({@code double[N][11]})
+     * @param features özellik matrisi ({@code double[N][k]}; {@code k} =
+     *                 {@code FeatureVector.dimension(analysisType)})
      * @param labels   sınıf etiketleri ({@code int[N]}; 0=AL, 1=SAT, 2=TUT)
      */
     private record TrainingSet(double[][] features, int[] labels) {}

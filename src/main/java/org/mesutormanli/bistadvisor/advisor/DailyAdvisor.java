@@ -5,6 +5,7 @@ import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.HoldingInput;
 import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.Plan;
 import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.Planned;
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import org.mesutormanli.bistadvisor.data.BistIndices;
 import org.mesutormanli.bistadvisor.data.CacheStore;
@@ -105,9 +106,13 @@ public class DailyAdvisor {
     /**
      * Günlük analizi uçtan uca çalıştırır ve öneri listelerini üretir.
      *
-     * <p>Portföy durumu, mod ve model tipi okunup seçili endeks için model
+     * <p>Portföy durumu, mod, model tipi ve analiz tipi okunup seçili endeks için model
      * hazırlanır; her pozisyon ve aday için fiyat serisi ile öznitelik vektörü
-     * çalışma içi önbellekten (gerekirse yeniden çekilerek) sağlanır. Pozisyonlar
+     * çalışma içi önbellekten (gerekirse yeniden çekilerek) sağlanır. Öznitelik
+     * vektörleri seçilen {@link AnalysisType}'ın metrik kümesiyle üretilir ve model
+     * de aynı kümeyle eğitildiği için boyutlar her zaman uyuşur. Temel gösterge
+     * içeren analiz tiplerinde ({@link AnalysisType#usesFundamental()}) kullanıcıyı
+     * uyaran bir not uyarı listesine eklenir. Pozisyonlar
      * {@link HoldingInput}, portföyde olmayan endeks hisseleri ve mevcut pozisyonlar
      * ({@code existing=true} ile eklemeye aday) {@link CandidateInput} olarak
      * {@link AllocationPlanner#plan} yöntemine verilir. Çıkan plan numaralı
@@ -124,7 +129,8 @@ public class DailyAdvisor {
         PortfolioState state = portfolioService.getState();
         AdvisorMode mode = portfolioService.advisorMode();
         ModelType modelType = portfolioService.modelType();
-        ModelStrategy model = modelTrainer.getOrTrain(modelType, state.selectedIndex);
+        AnalysisType analysisType = portfolioService.analysisType();
+        ModelStrategy model = modelTrainer.getOrTrain(modelType, analysisType, state.selectedIndex);
 
         Map<String, List<Bar>> barsCache = new HashMap<>();
         Map<String, double[]> featureCache = new HashMap<>();
@@ -138,7 +144,7 @@ public class DailyAdvisor {
             Integer predClass = null;
             if (price != null) {
                 currentPrices.put(p.symbol(), price);
-                double[] pred = model.predict(featuresCached(p.symbol(), bars, featureCache));
+                double[] pred = model.predict(featuresCached(p.symbol(), bars, analysisType, featureCache));
                 predClass = (int) pred[0];
                 score = pred[1];
             }
@@ -155,14 +161,14 @@ public class DailyAdvisor {
             List<Bar> bars = loadSeriesCached(sym, barsCache);
             Double price = currentPrice(bars);
             if (price == null) continue;
-            double[] pred = model.predict(featuresCached(sym, bars, featureCache));
+            double[] pred = model.predict(featuresCached(sym, bars, analysisType, featureCache));
             candidateInputs.add(new CandidateInput(sym, price, pred[1], (int) pred[0], false));
         }
         for (Position p : state.positions) {
             List<Bar> bars = loadSeriesCached(p.symbol(), barsCache);
             Double price = currentPrice(bars);
             if (price == null) continue;
-            double[] pred = model.predict(featuresCached(p.symbol(), bars, featureCache));
+            double[] pred = model.predict(featuresCached(p.symbol(), bars, analysisType, featureCache));
             candidateInputs.add(new CandidateInput(p.symbol(), price, pred[1], (int) pred[0], true));
         }
 
@@ -181,10 +187,17 @@ public class DailyAdvisor {
                     b.price(), b.score(), b.note()));
         }
 
+        List<String> warnings = new ArrayList<>();
+        if (analysisType.usesFundamental()) {
+            warnings.add("Analiz tipi " + analysisType.label
+                    + ": temel göstergeler güncel tarihli olduğu için geçmişe dönük çalışmalarda yanıltıcı olabilir");
+        }
+        warnings.addAll(plan.warnings());
+
         portfolioService.updateState(s -> s.lastRunDate = LocalDate.now().toString());
         return new AnalysisResult(holdings, buys, portfolioService.availableCash(),
                 state.positions.size(), portfolioService.maxPositions(),
-                plan.buySlots(), plan.warnings());
+                plan.buySlots(), List.copyOf(warnings));
     }
 
     /**
@@ -254,18 +267,21 @@ public class DailyAdvisor {
      *
      * @param symbol       öznitelikleri hesaplanacak hissenin sembolü
      * @param bars         sembolün bar serisi
+     * @param analysisType vektörün metrik kümesi (bkz. {@link FeatureVector#toArray(AnalysisType)})
      * @param featureCache çalışma süresince geçerli olan sembol → öznitelik vektörü
      *                     memoizasyon haritası
-     * @return {@link Fundamentals} ve bar'lardan türetilip normalize edilmiş
-     *         öznitelik vektörü
-     * @implNote İlk çağrıda temel veriler Yahoo'dan çekilir ve vektör
-     *           {@link FeatureVector#fromBars} ile kurulup normalize edilir; sonraki
-     *           çağrılar haritadan döner.
+     * @return {@link Fundamentals} ve bar'lardan türetilip normalize edilmiş ve seçilen
+     *         analiz tipinin kümesine kesilmiş öznitelik vektörü
+     * @implNote İlk çağrıda temel veriler yalnızca analiz tipi gerektiriyorsa Yahoo'dan
+     *           çekilir ({@link AnalysisType#usesFundamental()}); vektör
+     *           {@link FeatureVector#fromBars} ile kurulup normalize edilir ve analiz
+     *           tipinin boyutuna kesilir, sonraki çağrılar haritadan döner.
      */
-    private double[] featuresCached(String symbol, List<Bar> bars, Map<String, double[]> featureCache) {
+    private double[] featuresCached(String symbol, List<Bar> bars, AnalysisType analysisType,
+                                    Map<String, double[]> featureCache) {
         return featureCache.computeIfAbsent(symbol, s -> {
-            Fundamentals f = yahoo.fetchFundamentals(s);
-            return FeatureVector.fromBars(f, bars).normalize().toArray();
+            Fundamentals f = analysisType.usesFundamental() ? yahoo.fetchFundamentals(s) : null;
+            return FeatureVector.fromBars(f, bars).normalize().toArray(analysisType);
         });
     }
 }

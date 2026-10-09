@@ -4,6 +4,7 @@ import org.mesutormanli.bistadvisor.advisor.DailyAdvisor;
 import org.mesutormanli.bistadvisor.advisor.DailyAdvisor.AnalysisResult;
 import org.mesutormanli.bistadvisor.advisor.DailyAdvisor.Recommendation;
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import org.mesutormanli.bistadvisor.model.ModelTrainer;
 import org.mesutormanli.bistadvisor.portfolio.PortfolioService;
@@ -44,28 +45,32 @@ public class AdvisorCommands {
     /**
      * {@code init} komutunu uygular: portföyü bütçe ve parametrelerle başlatır.
      * <p>
-     * Verilmeyen mod/model mevcut portföyden miras alınır. Önce
+     * Verilmeyen mod/model/analiz tipi mevcut portföyden miras alınır. Önce
      * {@link PortfolioService#initPortfolio} çağrılır; doğrulama uyarısı varsa
-     * "Uyari:" olarak basılır, ardından sermaye/nakit/mod/model özet satırı yazılır.
+     * "Uyari:" olarak basılır, ardından sermaye/nakit/mod/model/analiz tipi özet satırı
+     * yazılır.
      *
-     * @param budget    başlangıç sermayesi (TL)
-     * @param mode      danışman modu etiketi (null ise mevcut mod miras alınır)
-     * @param model     model anahtarı (null ise mevcut model miras alınır)
-     * @param positions açılacak pozisyon listesi
+     * @param budget     başlangıç sermayesi (TL)
+     * @param mode       danışman modu etiketi (null ise mevcut mod miras alınır)
+     * @param model      model anahtarı (null ise mevcut model miras alınır)
+     * @param analysis   analiz tipi anahtarı (null ise mevcut analiz tipi miras alınır)
+     * @param positions  açılacak pozisyon listesi
      */
-    public void init(double budget, String mode, String model, List<Position> positions) {
+    public void init(double budget, String mode, String model, String analysis, List<Position> positions) {
         String modeName = mode != null
                 ? AdvisorMode.fromLabel(mode).name() : portfolioService.advisorMode().name();
         String modelName = model != null
                 ? ModelType.fromKey(model).name() : portfolioService.modelType().name();
-        portfolioService.initPortfolio(budget, modeName, modelName, positions);
+        String analysisName = analysis != null
+                ? AnalysisType.fromKey(analysis).name() : portfolioService.analysisType().name();
+        portfolioService.initPortfolio(budget, modeName, modelName, analysisName, positions);
         String validationError = portfolioService.validatePortfolio();
         if (validationError != null) {
             System.out.println("Uyari: " + validationError);
         }
         System.out.println("Portföy kaydedildi: sermaye=" + budget + " TL, nakit="
                 + Math.round(portfolioService.availableCash()) + " TL, mod=" + modeName
-                + ", model=" + modelName);
+                + ", model=" + modelName + ", analiz=" + analysisName);
     }
 
     /**
@@ -129,7 +134,8 @@ public class AdvisorCommands {
         PortfolioState s = portfolioService.getState();
         double cash = portfolioService.availableCash();
         System.out.println("Sermaye: " + Math.round(s.budget) + " TL | Nakit: " + Math.round(cash) + " TL");
-        System.out.println("Mod: " + s.advisorMode + " | Model: " + s.modelType);
+        System.out.println("Mod: " + s.advisorMode + " | Model: " + s.modelType
+                + " | Analiz: " + s.analysisType);
         System.out.println("Pozisyonlar (" + s.positions.size() + "/" + portfolioService.maxPositions() + "):");
         for (Position p : s.positions) {
             System.out.println("  " + p.symbol() + " " + p.lots() + " lot @ " + p.avgCost());
@@ -137,16 +143,17 @@ public class AdvisorCommands {
     }
 
     /**
-     * {@code train} komutunu uygular: seçili modeli seçili endeks için eğitir.
+     * {@code train} komutunu uygular: seçili modeli seçili endeks ve analiz tipi için eğitir.
      * <p>
      * {@link ModelTrainer#train} çağrılır; model yalnızca bellekte tutulur.
      */
     public void train() {
         ModelType t = portfolioService.modelType();
+        AnalysisType a = portfolioService.analysisType();
         String idx = portfolioService.getState().selectedIndex;
-        System.out.println("Model egitimi (" + t + ", endeks=" + idx + ") yapiliyor...");
-        modelTrainer.train(t, idx);
-        System.out.println("Model egitildi (bellekte): " + t.key);
+        System.out.println("Model egitimi (" + t + ", analiz=" + a + ", endeks=" + idx + ") yapiliyor...");
+        modelTrainer.train(t, a, idx);
+        System.out.println("Model egitildi (bellekte): " + t.key + " (" + a.key + ")");
     }
 
     /**

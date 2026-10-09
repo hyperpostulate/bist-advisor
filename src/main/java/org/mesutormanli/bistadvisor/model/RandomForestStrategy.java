@@ -1,5 +1,6 @@
 package org.mesutormanli.bistadvisor.model;
 
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import smile.classification.RandomForest;
 import smile.data.DataFrame;
@@ -19,7 +20,8 @@ import java.util.List;
  * için ayrı bir ikili rastgele orman eğitilir: hedef kolon adı {@code sinif} olup hedef sınıf
  * örnekleri {@code 1}, diğerleri {@code 0} ile etiketlenir. Modeller SMILE {@code DataFrame} ve
  * {@code Formula.lhs("sinif")} ile kurulur; öznitelik kolon adları
- * {@link FeatureFrame#names()} (11 öznitelik) ile sağlanır. Tek sınıflı eğitimde model kurmaz.
+ * {@link FeatureFrame#names(AnalysisType)} kolon adları ile sağlanır (analiz tipi 6/5/11
+ * sütun belirler). Tek sınıflı eğitimde model kurmaz.
  * Üye metodlar {@code synchronized} olduğundan sınıf thread-safe'tir.
  */
 public final class RandomForestStrategy implements ModelStrategy {
@@ -38,14 +40,16 @@ public final class RandomForestStrategy implements ModelStrategy {
      * {@code Formula.lhs("sinif")} ile eğitilir. Ayrıca tahmin için yalnızca öznitelik
      * kolonlarını içeren şema saklanır. Tek sınıf varsa model kurulmaz.
      *
-     * @param features eğitim seti öznitelik matrisi ({@code double[N][11]})
+     * @param features eğitim seti öznitelik matrisi ({@code double[N][k]}; {@code k} =
+     *                 {@code FeatureVector.dimension(type)})
      * @param labels   eğitim seti etiketleri ({@code int[N]}; 0=AL, 1=SAT, 2=TUT)
+     * @param type     eğitimde kullanılan analiz tipi; kolon adlarını ve sütun sayısını belirler
      */
     @Override
-    public synchronized void train(double[][] features, int[] labels) {
+    public synchronized void train(double[][] features, int[] labels, AnalysisType type) {
         forests.clear();
         classes = ClassSpace.of(labels);
-        String[] names = FeatureFrame.names();
+        String[] names = FeatureFrame.names(type);
         this.schema = DataFrame.of(features, names).schema();
         if (classes.size() == 1) return;
         for (int i = 0; i < classes.size(); i++) {
@@ -66,7 +70,7 @@ public final class RandomForestStrategy implements ModelStrategy {
      * sınıf kazanır. Eğitilmemişse {@code {TUT, 0.0}}; tek sınıflı eğitimde
      * {@code {o sınıf, 1.0}} döner.
      *
-     * @param features 11 boyutlu öznitelik vektörü
+     * @param features analiz tipinin boyutunda öznitelik vektörü
      * @return 2 elemanlı dizi: {@code [sınıf etiketi, olasılık/skor]}
      */
     @Override

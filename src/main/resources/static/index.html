@@ -75,6 +75,13 @@
           <option value="AGGRESSIVE" data-i18n="modeAggressive">AGRESİF</option>
         </select>
       </div>
+      <div><label data-i18n="analysisType">Analiz Tipi</label>
+        <select id="analysis">
+          <option value="TECHNICAL" data-i18n="analysisTechnical">Yalnızca Teknik</option>
+          <option value="FUNDAMENTAL" data-i18n="analysisFundamental">Yalnızca Temel</option>
+          <option value="TECHNICAL_FUNDAMENTAL" selected data-i18n="analysisBoth">Teknik + Temel</option>
+        </select>
+      </div>
       <div><label data-i18n="mlModel">ML Modeli</label>
         <select id="model">
           <option value="RANDOM_FOREST" selected>RandomForest</option>
@@ -118,6 +125,10 @@ const I18N = {
     modeConservative: "TEMKİNLİ",
     modeBalanced: "DENGELİ",
     modeAggressive: "AGRESİF",
+    analysisType: "Analiz Tipi",
+    analysisTechnical: "Yalnızca Teknik",
+    analysisFundamental: "Yalnızca Temel",
+    analysisBoth: "Teknik + Temel",
     mlModel: "ML Modeli",
     save: "Kaydet",
     analyze: "Analiz Et",
@@ -183,6 +194,10 @@ const I18N = {
     modeConservative: "CONSERVATIVE",
     modeBalanced: "BALANCED",
     modeAggressive: "AGGRESSIVE",
+    analysisType: "Analysis Type",
+    analysisTechnical: "Technical Only",
+    analysisFundamental: "Fundamentals Only",
+    analysisBoth: "Technical + Fundamentals",
     mlModel: "ML Model",
     save: "Save",
     analyze: "Analyze",
@@ -270,6 +285,7 @@ async function saveSettings() {
   const st = await getState();
   st.advisorMode = document.getElementById('mode').value;
   st.modelType = document.getElementById('model').value;
+  st.analysisType = document.getElementById('analysis').value;
   st.selectedIndex = document.getElementById('index').value;
   await post('/api/portfolio', st);
   alert(t('settingsSaved'));
@@ -471,6 +487,7 @@ async function renderPortfolioCurrent() {
   idxSel.value = cfg.currentIndex || 'BIST_30';
   document.getElementById('mode').value = cfg.currentMode;
   document.getElementById('model').value = cfg.currentModel;
+  if (cfg.currentAnalysisType) document.getElementById('analysis').value = cfg.currentAnalysisType;
   applyLang();
   await loadPortfolio();
 })();

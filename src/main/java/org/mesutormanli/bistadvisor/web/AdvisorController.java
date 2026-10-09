@@ -4,6 +4,7 @@ import org.mesutormanli.bistadvisor.advisor.DailyAdvisor;
 import org.mesutormanli.bistadvisor.advisor.DailyAdvisor.AnalysisResult;
 import org.mesutormanli.bistadvisor.advisor.DailyAdvisor.Recommendation;
 import org.mesutormanli.bistadvisor.config.AdvisorMode;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.data.BistIndices;
 import org.mesutormanli.bistadvisor.config.ModelType;
 import org.mesutormanli.bistadvisor.portfolio.PortfolioService;
@@ -49,12 +50,13 @@ public class AdvisorController {
     }
 
     /**
-     * Yapılandırmayı döndürür: modeller, modlar ve endeks listesi ile aktif seçimler.
+     * Yapılandırmayı döndürür: modeller, modlar, analiz tipleri ve endeks listesi ile aktif
+     * seçimler.
      * <p>
      * REST uç noktası: {@code GET /api/config}.
      *
      * @return liste ve aktif seçimleri ({@code currentMode}, {@code currentModel},
-     *         {@code currentIndex}) içeren harita
+     *         {@code currentAnalysisType}, {@code currentIndex}) içeren harita
      */
     @GetMapping("/config")
     public Map<String, Object> config() {
@@ -63,12 +65,16 @@ public class AdvisorController {
         for (AdvisorMode am : AdvisorMode.values()) modes.add(am.name());
         List<String> models = new ArrayList<>();
         for (ModelType mt : ModelType.values()) models.add(mt.name());
+        List<String> analysisTypes = new ArrayList<>();
+        for (AnalysisType at : AnalysisType.values()) analysisTypes.add(at.name());
         List<String> indices = bistIndices.indexNames();
         m.put("modes", modes);
         m.put("models", models);
+        m.put("analysisTypes", analysisTypes);
         m.put("indices", indices);
         m.put("currentMode", portfolioService.advisorMode().name());
         m.put("currentModel", portfolioService.modelType().name());
+        m.put("currentAnalysisType", portfolioService.analysisType().name());
         m.put("currentIndex", portfolioService.getState().selectedIndex);
         return m;
     }
@@ -129,6 +135,7 @@ public class AdvisorController {
         out.put("budget", s.budget);
         out.put("advisorMode", s.advisorMode);
         out.put("modelType", s.modelType);
+        out.put("analysisType", s.analysisType);
         out.put("positions", rows);
         out.put("availableCash", cash);
         out.put("totalInvested", totalInvested);
@@ -144,7 +151,8 @@ public class AdvisorController {
      * REST uç noktası: {@code POST /api/portfolio}. Önce {@link #structuralErrors} ile
      * yapısal doğrulama yapılır; hata varsa yanıt {@code {"status":"error","message":...}}
      * olur ve portföy KAYDEDİLMEZ. Geçerliyse {@link PortfolioService#updatePortfolio}
-     * ile kaydedilir (endeks adı yalnızca {@link BistIndices} içinde varsa kabul edilir);
+     * ile kaydedilir (endeks adı yalnızca {@link BistIndices} içinde varsa kabul edilir;
+     * analiz tipi geçersizse {@link AnalysisType#fromKey} ile varsayılana düşer);
      * ardından {@link PortfolioService#validatePortfolio} sonucuna göre durum
      * {@code warning} veya {@code ok} olur.
      *
@@ -165,6 +173,7 @@ public class AdvisorController {
                 incoming.budget,
                 incoming.advisorMode,
                 incoming.modelType,
+                incoming.analysisType != null ? AnalysisType.fromKey(incoming.analysisType).name() : null,
                 indexName,
                 incoming.positions);
         Map<String, String> r = new HashMap<>();

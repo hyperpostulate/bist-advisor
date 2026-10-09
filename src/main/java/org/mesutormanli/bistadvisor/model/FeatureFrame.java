@@ -1,5 +1,6 @@
 package org.mesutormanli.bistadvisor.model;
 
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.features.FeatureVector;
 
 import java.util.List;
@@ -8,9 +9,10 @@ import java.util.List;
  * Köprü/yardımcı sınıf: {@link FeatureVector} listelerini ve etiket listelerini SMILE
  * modellerinin beklediği dizi formatlarına dönüştürür ve öznitelik kolon adlarını sağlar.
  *
- * <p>SMILE {@code DataFrame} kolon adları {@link FeatureVector#featureNames()} ile aynıdır
- * (11 öznitelik); bu sayede rastgele orman gibi formül tabanlı modeller öznitelikleri adıyla
- * adresleyebilir. Tüm üyeler statiktir, sınıf örneklenemez.
+ * <p>SMILE {@code DataFrame} kolon adları {@link FeatureVector#featureNames(AnalysisType)}
+ * ile aynıdır ve seçilen analiz tipinin metrik kümesini yansıtır (6/5/11 sütun); bu sayede
+ * rastgele orman gibi formül tabanlı modeller öznitelikleri adıyla adresleyebilir. Tüm
+ * üyeler statiktir, sınıf örneklenemez.
  */
 public final class FeatureFrame {
 
@@ -20,21 +22,23 @@ public final class FeatureFrame {
     private FeatureFrame() {}
 
     /**
-     * Döndürür: öznitelik kolon adlarını verir (SMILE kolon adları).
+     * Döndürür: analiz tipinin öznitelik kolon adlarını verir (SMILE kolon adları).
      *
-     * @return 11 boyutlu öznitelik isimleri dizisi
+     * @param type analiz tipi
+     * @return analiz tipinin metrik kümesine karşılık gelen kolon isimleri dizisi
      */
-    public static String[] names() { return FeatureVector.featureNames(); }
+    public static String[] names(AnalysisType type) { return FeatureVector.featureNames(type); }
 
     /**
      * Dönüştürür: {@link FeatureVector} listesini eğitim matrisine çevirir.
      *
      * @param features öznitelik vektörleri listesi
-     * @return özellik matrisi ({@code double[N][11]})
+     * @param type     analiz tipi; her satırın sütun düzenini ve genişliğini belirler
+     * @return özellik matrisi ({@code double[N][FeatureVector.dimension(type)]})
      */
-    public static double[][] toMatrix(List<FeatureVector> features) {
+    public static double[][] toMatrix(List<FeatureVector> features, AnalysisType type) {
         double[][] m = new double[features.size()][];
-        for (int i = 0; i < features.size(); i++) m[i] = features.get(i).toArray();
+        for (int i = 0; i < features.size(); i++) m[i] = features.get(i).toArray(type);
         return m;
     }
 

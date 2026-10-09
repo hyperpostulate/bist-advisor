@@ -3,7 +3,9 @@ package org.mesutormanli.bistadvisor.model;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mesutormanli.bistadvisor.config.AnalysisType;
 import org.mesutormanli.bistadvisor.config.ModelType;
+import org.mesutormanli.bistadvisor.features.FeatureVector;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,15 +31,17 @@ class ModelStrategiesTest {
     /**
      * Merkezi etrafında çok küçük titreşimli, kompakt bir sınıf bulutu üretir.
      * <p>
-     * Her örneğin 11 boyutu da aynı değere ayarlanır ve {@code (i % 5 - 2) * 1e-3}
-     * jitter uygulanır; böylece örnekler birbirinden farklı ama sıkı kalır.
+     * Her örneğin {@code dims} boyutu da aynı değere ayarlanır ve
+     * {@code (i % 5 - 2) * 1e-3} jitter uygulanır; böylece örnekler birbirinden
+     * farklı ama sıkı kalır.
      *
      * @param center bulutun merkez değeri
      * @param n      üretilecek örnek sayısı
+     * @param dims   öznitelik boyutu (analiz tipinin metrik kümesi)
      * @return boyutları {@code center ± 0,002} civarında titreşen {@code n} örneklik matris
      */
-    private static double[][] blob(double center, int n) {
-        double[][] x = new double[n][DIMS];
+    private static double[][] blob(double center, int n, int dims) {
+        double[][] x = new double[n][dims];
         for (int i = 0; i < n; i++) {
             double jitter = (i % 5 - 2) * 1e-3;
             Arrays.fill(x[i], center + jitter);
@@ -46,15 +50,37 @@ class ModelStrategiesTest {
     }
 
     /**
+     * Merkezi etrafında çok küçük titreşimli, tam (11) boyutlu sınıf bulutu üretir.
+     *
+     * @param center bulutun merkez değeri
+     * @param n      üretilecek örnek sayısı
+     * @return boyutları {@code center ± 0,002} civarında titreşen {@code n} örneklik matris
+     */
+    private static double[][] blob(double center, int n) {
+        return blob(center, n, DIMS);
+    }
+
+    /**
      * Tek bir sorgu örneği üretir.
+     *
+     * @param value yazılacak değer
+     * @param dims  öznitelik boyutu (analiz tipinin metrik kümesi)
+     * @return bütün boyutları {@code value} olan tekil özellik vektörü
+     */
+    private static double[] point(double value, int dims) {
+        double[] x = new double[dims];
+        Arrays.fill(x, value);
+        return x;
+    }
+
+    /**
+     * Tam (11) boyutlu tek bir sorgu örneği üretir.
      *
      * @param value 11 boyutun tamamına yazılacak değer
      * @return bütün boyutları {@code value} olan tekil özellik vektörü
      */
     private static double[] point(double value) {
-        double[] x = new double[DIMS];
-        Arrays.fill(x, value);
-        return x;
+        return point(value, DIMS);
     }
 
     /**
@@ -114,7 +140,7 @@ class ModelStrategiesTest {
         double[][] x = concat(concat(blob(0.2, 30), blob(0.5, 30)), blob(0.8, 30));
         int[] y = concat(concat(labels(Labeler.BUY, 30), labels(Labeler.SELL, 30)), labels(Labeler.HOLD, 30));
         ModelStrategy strategy = ModelStrategyFactory.create(type);
-        strategy.train(x, y);
+        strategy.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
         assertEquals(Labeler.BUY, (int) strategy.predict(point(0.2))[0], type.name());
         assertEquals(Labeler.SELL, (int) strategy.predict(point(0.5))[0], type.name());
@@ -138,7 +164,7 @@ class ModelStrategiesTest {
         double[][] x = concat(blob(0.2, 30), blob(0.8, 30));
         int[] y = concat(labels(Labeler.BUY, 30), labels(Labeler.HOLD, 30));
         ModelStrategy strategy = ModelStrategyFactory.create(type);
-        strategy.train(x, y);
+        strategy.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
         double[] pred = strategy.predict(point(0.2));
         assertTrue(pred[0] == Labeler.BUY || pred[0] == Labeler.HOLD,
@@ -160,7 +186,7 @@ class ModelStrategiesTest {
         double[][] x = blob(0.5, 30);
         int[] y = labels(Labeler.HOLD, 30);
         ModelStrategy strategy = ModelStrategyFactory.create(type);
-        strategy.train(x, y);
+        strategy.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
         double[] pred = strategy.predict(point(0.9));
         assertEquals(Labeler.HOLD, (int) pred[0], type.name());
@@ -205,7 +231,7 @@ class ModelStrategiesTest {
         int[] y = ys.stream().mapToInt(Integer::intValue).toArray();
 
         KnnStrategy knn = new KnnStrategy();
-        knn.train(x, y);
+        knn.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
         double[] pred = knn.predict(point(0.45));
         assertEquals(Labeler.SELL, (int) pred[0],
@@ -227,5 +253,32 @@ class ModelStrategiesTest {
         assertEquals(Labeler.BUY, space.label(0));
         assertEquals(Labeler.HOLD, space.label(1));
         assertArrayEquals(new int[]{0, 1, 0}, space.compress(new int[]{Labeler.BUY, Labeler.HOLD, Labeler.BUY}));
+    }
+
+    /**
+     * Analiz tipinin belirlediği boyut kesilmiş matrislerle eğitim ve tahmin.
+     * <p>
+     * Senaryo: her analiz tipi ({@code YALNIZCA_TEKNIK} → 6, {@code YALNIZCA_TEMEL} → 5,
+     * {@code TEKNIK_TEMEL} → 11 sütun) için o boyutta üretilmiş üç kompakt bulut
+     * (0,2 / 0,5 / 0,8) AL / SAT / TUT etiketiyle eğitilir. Beklenen davranış: her
+     * strateji ve her analiz tipi kombinasyonunda eğitim ve tahmin istisna fırlatmaz;
+     * sorgu noktası doğru sınıfı döndürür (0,2 → AL, 0,5 → SAT, 0,8 → TUT).
+     *
+     * @param type sınanan model stratejisi
+     */
+    @ParameterizedTest
+    @EnumSource(ModelType.class)
+    void analizTipineGoreKesilmisBoyutlarlaCalisir(ModelType type) {
+        for (AnalysisType a : AnalysisType.values()) {
+            int dim = FeatureVector.dimension(a);
+            double[][] x = concat(concat(blob(0.2, 30, dim), blob(0.5, 30, dim)), blob(0.8, 30, dim));
+            int[] y = concat(concat(labels(Labeler.BUY, 30), labels(Labeler.SELL, 30)), labels(Labeler.HOLD, 30));
+            ModelStrategy strategy = ModelStrategyFactory.create(type);
+            strategy.train(x, y, a);
+
+            assertEquals(Labeler.BUY, (int) strategy.predict(point(0.2, dim))[0], type + "/" + a);
+            assertEquals(Labeler.SELL, (int) strategy.predict(point(0.5, dim))[0], type + "/" + a);
+            assertEquals(Labeler.HOLD, (int) strategy.predict(point(0.8, dim))[0], type + "/" + a);
+        }
     }
 }
