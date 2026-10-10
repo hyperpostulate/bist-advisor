@@ -99,75 +99,139 @@ GitHub Actions iş akışı (`.github/workflows/`):
 
 ```
 org.mesutormanli.bistadvisor
-├── advisor/
-│   ├── AllocationPlanner.java             # Saf karar motoru (SAT/AL tutarlılığı, slot + bütçe dağıtımı)
-│   ├── DailyAdvisor.java                  # Günlük öneri orkestratörü (veri + model + planlayıcı)
-│   └── ScoreGate.java                     # Model türüne göre yorumlanmış skor eşikleri
-├── cli/
-│   ├── AdvisorCommands.java               # CLI komut uygulamaları (init/run/confirm/status/train)
-│   ├── CliCommandRunner.java              # CLI komut dağıtımı (CommandLineRunner)
-│   ├── CliMode.java                       # CLI/Web çalışma modu ayrımı (komut tespiti, --cli imleyicisi)
-│   └── InitArgs.java                      # init argüman ayrıştırma (bütçe/mod/model/analiz/pozisyon)
-├── config/
-│   ├── AdvisorMode.java                   # Yatırım modu enum (CONSERVATIVE/BALANCED/AGGRESSIVE)
-│   ├── AnalysisType.java                  # Analiz tipi enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
-│   ├── AppConfig.java                     # Uygulama konfigürasyonu
-│   └── ModelType.java                     # ML model tipi enum (RANDOM_FOREST/SVM/KNN)
-├── data/
-│   ├── BistIndices.java                   # BIST endeks-hisse eşleştirme (.properties)
-│   ├── CacheStore.java                    # Fiyat serisi önbelleği (CSV dosya, tazeleme pencereli)
-│   ├── MarketTime.java                    # Ortak piyasa saat dilimi + tazelik penceresi
-│   └── YahooClient.java                   # Yahoo Finance OHLCV + temel veri çekici (crumb, throttle, TTL önbellek)
-├── features/
-│   ├── FeatureVector.java                 # 11 boyutlu özellik vektörü (analiz tipine göre 6/5/11 kesilir)
-│   └── TechnicalFeatures.java             # Teknik göstergeler (RSI/SMA/MACD/volatilite)
-├── model/
-│   ├── ClassSpace.java                    # Sınıf-etiket eşlemesi (güvenli tahmin)
-│   ├── FeatureFrame.java                  # Özellik matrisi + etiket dönüştürücü
-│   ├── KnnStrategy.java                   # KNN sınıflandırıcı (SMILE)
-│   ├── Labeler.java                       # Getiri bazlı etiketleyici (AL/SAT/TUT)
-│   ├── ModelStrategy.java                 # ML strateji arayüzü
-│   ├── ModelStrategyFactory.java          # Strateji fabrikası
-│   ├── ModelTrainer.java                  # Model eğitimi + bellek-içi önbellek
-│   ├── RandomForestStrategy.java          # RandomForest one-vs-rest (SMILE)
-│   └── SvmStrategy.java                   # SVM one-vs-rest (SMILE Gaussian kernel)
-├── portfolio/
-│   ├── PortfolioService.java              # Portföy servisi (state.yaml kalıcılık)
-│   ├── PortfolioState.java                # Portföy durumu (sermaye/nakit/mod/model/analiz/pozisyonlar)
-│   └── Position.java                      # Pozisyon modeli (sembol/lot/maliyet)
+├── domain/                                  # Saf çekirdek (Spring bağımlılığı yok)
+│   ├── advisor/
+│   │   ├── AllocationPlanner.java           # Saf karar motoru (SAT/AL tutarlılığı, slot + bütçe dağıtımı)
+│   │   ├── RiskProfile.java                 # Yatırım modu enum (CONSERVATIVE/BALANCED/AGGRESSIVE) + eşikler
+│   │   ├── ScoreGate.java                   # Model türüne göre yorumlanmış skor eşikleri
+│   │   └── Signal.java                      # Öneri sinyali (AL/TUT/SAT)
+│   ├── market/
+│   │   ├── Bar.java                         # Günlük bar (tarih/kapanış/hacim)
+│   │   ├── Fundamentals.java                # Temel göstergeler (F/K, PD/DD, temettü, büyüme, ROE)
+│   │   ├── MarketTime.java                  # Ortak piyasa saat dilimi + tazelik penceresi
+│   │   └── TechnicalIndicators.java         # Teknik göstergeler (RSI/SMA/MACD/volatilite)
+│   ├── ml/
+│   │   ├── ClassSpace.java                  # Sınıf-etiket eşlemesi (güvenli tahmin)
+│   │   ├── FeatureVector.java               # 11 boyutlu özellik vektörü (analiz tipine göre 6/5/11 kesilir)
+│   │   ├── KnnStrategy.java                 # KNN sınıflandırıcı (SMILE, k=5)
+│   │   ├── Labeler.java                     # Getiri bazlı etiketleyici (AL/SAT/TUT)
+│   │   ├── ModelStrategy.java               # ML strateji arayüzü (tahmin → Prediction)
+│   │   ├── ModelStrategyFactory.java        # Strateji fabrikası
+│   │   ├── Prediction.java                  # Tahmin kaydı (sınıf + skor)
+│   │   ├── RandomForestStrategy.java        # RandomForest one-vs-rest (SMILE)
+│   │   ├── SvmStrategy.java                 # SVM one-vs-rest (SMILE Gaussian kernel)
+│   │   └── TrainingSet.java                 # Eğitim matrisi (analiz tipinin metrik kümesi)
+│   ├── portfolio/
+│   │   ├── Portfolio.java                   # Para/pozisyon muhasebesi agregası (açık nakit modeli)
+│   │   ├── PortfolioPolicy.java             # Politika sabitleri (TOLERANCE, MAX_POSITIONS)
+│   │   ├── PortfolioSnapshot.java           # state.yaml tel biçimi (ham alanlar)
+│   │   ├── PortfolioValidator.java          # Taslak + kural doğrulama (eski mesajlar birebir)
+│   │   ├── Position.java                    # Pozisyon modeli (sembol/lot/maliyet)
+│   │   ├── PositionDraft.java               # Ham pozisyon girdisi
+│   │   ├── Transaction.java                 # İşlem (AL/SAT talebi)
+│   │   ├── TransactionAction.java           # İşlem türü enum (AL/SAT)
+│   │   ├── TransactionOutcome.java          # Uygulama sonucu + red nedenleri
+│   │   └── ValidationResult.java            # Doğrulama sonucu (ok/message)
+│   └── settings/
+│       ├── AdvisorSettings.java             # Ayar kaydı (mod/model/analiz/endeks)
+│       ├── AnalysisType.java                # Analiz tipi enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
+│       └── ModelType.java                   # ML model tipi enum (RANDOM_FOREST/SVM/KNN)
+├── ports/                                   # Dış dünya arayüzleri (bağımlılıkların ters çevrildiği kapılar)
+│   ├── MarketDataSource.java                # Fiyat + temel veri kaynağı portu
+│   ├── PortfolioStateStore.java             # Portföy durum deposu portu
+│   └── PriceCache.java                      # Fiyat serisi önbellek portu
+├── adapters/
+│   ├── cache/
+│   │   ├── BarCsvCodec.java                 # Saf CSV ⇄ Bar dönüşümü
+│   │   └── CsvPriceCache.java               # Fiyat serisi önbelleği (CSV dosya, tazelik pencereli)
+│   ├── indices/
+│   │   └── BistIndices.java                 # BIST endeks-hisse eşleştirme (.properties)
+│   ├── state/
+│   │   └── YamlPortfolioStateStore.java     # state.yaml kalıcılık adaptörü
+│   └── yahoo/
+│       ├── FundamentalsDayCache.java        # Temel veri gün bazlı TTL önbelleği
+│       ├── RetryingHttpTransport.java       # Throttle + üstel geri çekilmeli HTTP taşıması
+│       ├── YahooJsonParser.java             # Saf Yahoo JSON ayrıştırıcı
+│       ├── YahooMarketDataSource.java       # MarketDataSource adaptörü (401 → oturum yenileme)
+│       └── YahooSession.java                # Cookie + crumb oturumu
+├── application/                             # Uygulama servisleri (use-case orkestrasyonu)
+│   ├── AnalysisResult.java                  # Analiz sonucu (holding/alım önerileri + özet)
+│   ├── AnalysisService.java                 # Günlük öneri orkestratörü (veri + model + planlayıcı)
+│   ├── FeaturePipeline.java                 # Bar + temel veri → FeatureVector
+│   ├── ModelRegistry.java                   # Bellek-içi model önbelleği (TİP:ANALİZ:ENDEKS)
+│   ├── ModelTrainingService.java            # Canlı veriyle model eğitimi
+│   ├── PortfolioService.java                # Portföy uygulama servisi (durum deposu üzerinden)
+│   ├── PortfolioView.java                   # Portföy görünüm satırı
+│   ├── PortfolioViewService.java            # Güncel fiyatlı portföy görünümü
+│   ├── PositionView.java                    # Pozisyon görünüm satırı
+│   ├── PriceSeriesService.java              # Fiyat yükleme akışı (önbellek → kaynak)
+│   ├── Recommendation.java                  # Öneri kaydı (API/CLI ortak)
+│   └── TrainingSetBuilder.java              # Eğitim matrisi kurucu
 ├── web/
-│   ├── AdvisorController.java             # REST API kontrolcüsü (/api/*)
-│   └── StaticPageConfig.java              # Statik dosya sunumu (index.html)
-└── BistAdvisorApplication.java            # Spring Boot giriş noktası (CLI/Web modu seçimi)
+│   ├── AdvisorController.java               # REST API kontrolcüsü (/api/*)
+│   ├── ApiMapper.java                       # Domain → DTO eşlemesi
+│   ├── StaticPageConfig.java                # Statik dosya sunumu (index.html)
+│   └── dto/                                 # Tip güvenli API sözleşmesi (JSON anahtarları sabit)
+│       ├── AnalysisResponse.java            # POST /api/analyze yanıtı
+│       ├── ConfigDto.java                   # GET /api/config yanıtı
+│       ├── ConfirmResponse.java             # POST /api/confirm yanıtı
+│       ├── PortfolioDraft.java              # POST /api/portfolio gövdesi
+│       ├── PortfolioViewDto.java            # GET /api/portfolio-view yanıtı
+│       ├── PositionViewDto.java             # Portföy görünüm pozisyonu
+│       ├── RecommendationDto.java           # Öneri kalemi
+│       ├── SavePortfolioResponse.java       # POST /api/portfolio yanıtı
+│       └── TransactionDto.java              # POST /api/confirm işlemi
+├── cli/
+│   ├── CliCommandRunner.java                # CLI komut dağıtımı (CommandLineRunner)
+│   ├── CliMode.java                         # CLI/Web çalışma modu ayrımı (komut tespiti, --cli imleyicisi)
+│   ├── ConfirmArgs.java                     # confirm argüman ayrıştırma (tek öğe, hata metni taşır)
+│   ├── ConsoleReportRenderer.java           # Konsol metin üretimi (eski çıktılar birebir korunur)
+│   ├── InitArgs.java                        # init argüman ayrıştırma (bütçe/mod/model/analiz/pozisyon)
+│   └── commands/
+│       ├── CliCommand.java                  # Komut arayüzü
+│       ├── ConfirmCommand.java              # confirm: işlem onayı (tek geçişte ayrıştırma + uygulama)
+│       ├── InitCommand.java                 # init: portföy kurulumu
+│       ├── RunCommand.java                  # run: günlük öneri
+│       ├── StatusCommand.java               # status: portföy özeti
+│       └── TrainCommand.java                # train: model eğitimi
+├── config/
+│   └── AppConfig.java                       # Uygulama konfigürasyonu + bean kayıtları
+└── BistAdvisorApplication.java              # Spring Boot giriş noktası (CLI/Web modu seçimi)
+
 ```
 
 ### Temel Bileşenler
 
 | Bileşen | Açıklama |
 |---------|----------|
-| `DailyAdvisor` | Veri yükler, model tahminlerini üretir ve karar mantığını `AllocationPlanner`'a devreder; sembol başına tek özellik hesabı |
+| `AnalysisService` | Veri yükler, model tahminlerini üretir ve karar mantığını `AllocationPlanner`'a devreder; sembol başına tek özellik hesabı |
 | `AllocationPlanner` | Saf karar motoru: SAT/TUT + AL listesi, slot/bütçe dağıtımı (birim teste alınabilir) |
 | `ScoreGate` | Model türüne göre eşik yorumu (KNN'de oy ızgarasına yuvarlama) |
-| `AdvisorCommands` | CLI komut uygulamaları: `init`, `run`, `confirm`, `status`, `train` |
+| `cli/commands/*` | Komut başına sınıf: `init`, `run`, `confirm`, `status`, `train`; `CliCommand` arayüzünde birleşir |
 | `CliMode` | CLI/Web modu ayrımı: komut tespiti, `--cli` imleyicisi ayıklama, bilinmeyen komut reddi |
 | `CliCommandRunner` | CLI komut dağıtımı (`CommandLineRunner`); argümansız ya da bilinmeyen komutta sessiz çıkış |
-| `InitArgs` | `init` argüman ayrıştırma (bütçe/mod/model/analiz/pozisyon) + hataların satır satır toplanması |
-| `AdvisorMode` | 3 yatırım modu: TEMKİNLİ (%25 risk), DENGELİ (%50), AGRESİF (%75) |
+| `InitArgs` / `ConfirmArgs` | `init`/`confirm` argüman ayrıştırma; `InitArgs` hataları satır satır toplar, `ConfirmArgs` hata metnini taşır |
+| `ConsoleReportRenderer` | Konsol çıktılarının tek üreticisi; eski metinler birebir korunur (birim testiyle kilitli) |
+| `RiskProfile` | 3 yatırım modu: TEMKİNLİ (%25 risk), DENGELİ (%50), AGRESİF (%75) |
 | `AnalysisType` | 3 analiz tipi: YALNIZCA_TEKNIK (6 teknik metrik), YALNIZCA_TEMEL (5 temel metrik), TEKNIK_TEMEL (11 metrik) |
-| `YahooClient` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker; crumb'ı her denemede yeniler, istekleri throttle eder, temel veriyi günlük TTL ile önbellekler |
+| `ports/*` | Dış dünya arayüzleri: `MarketDataSource`, `PriceCache`, `PortfolioStateStore` |
+| `RetryingHttpTransport` / `YahooSession` | Throttle + 429/5xx üstel geri çekilmeli HTTP taşıması; cookie + crumb oturumu (401'de yenilenir) |
+| `YahooJsonParser` / `FundamentalsDayCache` | Saf JSON ayrıştırma + temel veri için gün bazlı TTL önbelleği |
+| `YahooMarketDataSource` | Yahoo Finance'den OHLCV (fiyat) + temel veri (F/K, PD/DD, temettü, ROE, büyüme) çeker |
 | `BistIndices` | BIST-30/50/100 ve sektör endekslerini sembol listeleriyle tanımlar |
-| `CacheStore` | Fiyat serilerini `cache/` dizininde CSV olarak önbelleğe alır |
+| `CsvPriceCache` / `BarCsvCodec` | Fiyat serilerini `cache/` dizininde CSV olarak önbelleğe alır; saf CSV ⇄ Bar dönüşümü |
 | `MarketTime` | Tek piyasa saat dilimi (`Europe/Istanbul`) + hafta sonu/tatil toleranslı tazelik penceresi |
 | `FeatureVector` | 11 özellik (analiz tipine göre 6 teknik / 5 temel / 11 kesilir): RSI, SMA-20/50 oranı, MACD, volatilite, hacim, F/K, PD/DD, temettü, büyüme, ROE |
-| `ModelStrategy` | ML model arayüzü: `train(features, labels, analysisType)`, `predict(features)` → {sınıf, skor} |
+| `ModelStrategy` | ML model arayüzü: `train(features, labels, analysisType)`, `predict(features)` → `Prediction` (sınıf + skor) |
 | `ClassSpace` | Sınıf-etiket eşlemesi: eksik sınıflarda güvenli tahmin (olasılık dizisi boyutu tuzağını önler) |
 | `RandomForestStrategy` | One-vs-rest RandomForest (gözlenen her sınıf için ikili sınıflandırıcı) |
 | `SvmStrategy` | One-vs-rest SVM (Gaussian kernel) |
 | `KnnStrategy` | k-NN sınıflandırıcı (k=5) |
 | `Labeler` | N günlük getiriye göre etiketleme: >%5 → AL, <-%5 → SAT, arada → TUT |
-| `ModelTrainer` | Canlı veriyle eğitim (analiz tipinin metrik kümesiyle), TİP:ANALİZ:ENDEKS anahtarlı bellek-içi önbellek |
-| `PortfolioService` | state.yaml okuma/yazma, açık nakit muhasebesi (gerçekleşen kâr/zarar nakde yansır), kısmi satış, portföy kısıtları (maks 5 pozisyon) |
-| `AdvisorController` | REST API: portföy okuma/güncelleme, analiz, işlem onayı, konfigürasyon |
+| `ModelTrainingService` / `TrainingSetBuilder` / `ModelRegistry` | Canlı veriyle eğitim (analiz tipinin metrik kümesiyle), TİP:ANALİZ:ENDEKS anahtarlı bellek-içi model önbelleği |
+| `Portfolio` | Açık nakit muhasebesi (gerçekleşen kâr/zarar nakde yansır), kısmi satış, portföy kısıtları (maks 5 pozisyon) |
+| `PortfolioService` | Portföy uygulama servisi: durum deposu (`YamlPortfolioStateStore` ↔ `state.yaml`) üzerinden okuma/yazma + mutabakat |
+| `AdvisorController` / `ApiMapper` | REST API: portföy okuma/güncelleme, analiz, işlem onayı, konfigürasyon; tip güvenli DTO'lar (`web/dto`) ile JSON sözleşmesi |
 | `BistAdvisorApplication` | Giriş noktası: CLI/Web modu seçimi (karar `CliMode`'da) + Spring Shell susturma bean'i |
 
 ### Bütçe ve Nakit Modeli
@@ -215,7 +279,7 @@ Konfigürasyon, portföy yönetimi, analiz ve işlem onayı sağlayan REST kontr
 | `POST` | `/api/confirm` | İşlemleri onayla | 200 |
 | `GET` | `/api/pending` | Bekleyen AL/SAT önerileri | 200 |
 
-### AdvisorMode
+### RiskProfile (Yatırım Modu)
 
 Üç yatırım modu ve yapılandırılabilir eşikler:
 
@@ -266,9 +330,9 @@ N=20 günlük getiri bazlı etiketleme:
 - Getiri < -%5 → SAT (1)
 - Arada → TUT (2)
 
-### YahooClient
+### Yahoo Veri Katmanı
 
-Yahoo Finance'den hem OHLCV fiyat serisi (`v8/finance/chart/`) hem de temel verileri (`quoteSummary` + crumb/cookie) çeker. Crumb gerektiren isteklerde URL her denemede güncel crumb ile kurulur; 401'de crumb/çerez yenilenir. Rate-limit (429) ve 5xx hatalarında katlanarak backoff ile 3 kez yeniden dener, tüm isteklerde `bist.scrape.delay-ms` gecikmesi uygular. Temel veriler gün bazlı TTL ile bellekte önbelleklenir (eğitim ve tahmin aynı sembol için veri çekimini tekrarlamaz). Fiyat çıktısı: `tarih,kapanis,hacim`.
+Yahoo erişimi beş parçaya bölünmüştür: `RetryingHttpTransport` throttle + katlanarak backoff (429/5xx'te 3 yeniden deneme) uygular; `YahooSession` cookie/crumb yönetir ve 401'de oturumu yeniler; `YahooJsonParser` gövdeleri saf olarak ayrıştırır; `FundamentalsDayCache` temel veriyi gün bazlı TTL ile önbellekler; `YahooMarketDataSource` bunları `MarketDataSource` portu altında birleştirir. Crumb gerektiren isteklerde URL her denemede güncel crumb ile kurulur, tüm isteklerde `bist.scrape.delay-ms` gecikmesi uygulanır. Hem OHLCV fiyat serisi (`v8/finance/chart/`) hem temel veriler (`quoteSummary` + crumb/cookie) çekilir; eğitim ve tahmin aynı sembol için veri çekimini tekrarlamaz. Fiyat çıktısı: `tarih,kapanis,hacim`.
 
 ### Veri Tazeliği ve "Veri Yok" Durumu
 
@@ -348,11 +412,11 @@ Tüm uç noktalar `/api` altında sunulur.
 | Uç Nokta | Yöntem | Açıklama | Yanıt |
 |----------|--------|----------|-------|
 | `/api/config` | GET | Konfigürasyon (modlar/modeller/analiz tipleri/endeksler) | JSON |
-| `/api/portfolio` | GET | Portföy durumu | `PortfolioState` |
+| `/api/portfolio` | GET | Portföy durumu (state.yaml alanları) | `PortfolioSnapshot` |
 | `/api/portfolio` | POST | Portföyü güncelle | `{"status":"ok\|warning\|error"}` |
 | `/api/portfolio-view` | GET | Portföy + güncel fiyatlar | JSON |
 | `/api/analyze` | POST | Günlük analiz çalıştır | `AnalysisResult` |
-| `/api/confirm` | POST | İşlemleri onayla | `{"status":"ok","applied":"N","failed":"M"}` |
+| `/api/confirm` | POST | İşlemleri onayla | `{"status":"ok","applied":1,"failed":0}` |
 | `/api/pending` | GET | Bekleyen AL/SAT önerileri | JSON dizi |
 
 ### Analiz Yanıt Yapısı
@@ -390,11 +454,20 @@ Testler JUnit Jupiter ile yazılmıştır ve ağa bağımlılığı yoktur. Gird
 | `FeatureVectorTest` | Öznitelik normalizasyonu: ölçekleme, uç değer kırpma, immutability, analiz tipine göre boyut kesme |
 | `AnalysisTypeTest` | Analiz tipi çözümleme: anahtar/takma ad eşlemeleri, bilinmeyen girdide varsayılan, metrik kümesi bayrakları |
 | `ModelStrategiesTest` | Model stratejileri: sınıf ayrımı, eksik/tek sınıf güvenliği, KNN k=5 davranışı, analiz tipi boyutlarıyla eğitim |
+| `PortfolioTest` | Portföy agregası: ağırlıklı ortalama maliyet, slot sınırı, nakit/tolerans kontrolleri, satış kuralları, doğrulama sırası, `restore` |
+| `PortfolioValidatorTest` | Doğrulama mesajları: butce/sembol/lot/maliyet biçim kontrolleri, negatif nakit, slot sayısı sınırı |
 | `AllocationPlannerTest` | Karar kuralları: SAT/AL çakışmaması, slot muhasebesi, satış sermayesinin bütçeye katılması, "veri yok" davranışı, skor doldurma |
 | `ScoreGateTest` | Model bazlı eşik yorumu: KNN'de oy ızgarasına yuvarlama + asgari komşu anlaşması |
 | `PortfolioServiceTest` | Nakit muhasebesi: gerçekleşen kâr/zararın nakde yansıması, kısmi/tam satış, negatif nakit, manuel güncelleme mutabakatı, analiz tipi persist, `state.yaml` yükleme |
-| `CacheStoreTest` | Fiyat önbelleği: hafta sonu/tatil toleranslı tazelik penceresi, bozuk dosya güvenliği |
+| `CsvPriceCacheTest` | Fiyat önbelleği: hafta sonu/tatil toleranslı tazelik penceresi, bozuk dosya güvenliği |
+| `BarCsvCodecTest` | Saf CSV ⇄ Bar dönüşümü: OHLCV kolon semantiği, bozuk satırların sessizce atlanması |
+| `YahooJsonParserTest` | Yahoo JSON: boş kapanış atma, eksik hacim, yedek alanlar, bozuk gövde güvenliği |
+| `PriceSeriesServiceTest` | Fiyat yükleme akışı: taze önbellekte kaynak yoklamama, bayatta tazeleme, boş yanıtta yazmama (sahte portlar) |
+| `ConfirmArgsTest` | `confirm` argüman ayrıştırma + eski hata metinleri |
 | `CliModeDetectionTest` | CLI/Web ayrımı: komut tespiti, `--cli` bayrağı, Spring argümanlarının Web modunu bozmaması |
+| `ConsoleReportRendererTest` | Konsol metinleri: rapor/init/status/confirm/train satırlarının eski çıktılarla birebir aynı kalması |
+| `AdvisorControllerTest` | API JSON sözleşmesi: uç nokta gövdelerindeki anahtar adları + taslak/işlem davranışları (MockMvc) |
+| `ApplicationContextTest` | Spring bağlam duman testi: katman telinin (bağımlılık enjeksiyonu) kurulması |
 
 ### Test Çalıştırma
 
@@ -434,9 +507,9 @@ mvn test -Dtest=BistAdvisorTest
 
 `AnalysisTypeTest` çözümleme sözleşmesini doğrular:
 
-- `fromKeyAnahtarTakmaAdVeEtiketleriCozer()`: anahtar, etiket ve takma adların çözümlenmesi
+- `fromKeyTumSozDizimleriniCozer()`: anahtar, etiket ve takma adların çözümlenmesi
 - `fromKeyBilinmeyenGirdideVarsayilanaDuser()`: bilinmeyen girdide `TECHNICAL_FUNDAMENTAL` varsayılanı
-- `metrikKumesiBayraklariDogru()`: teknik/temel kullanım bayrakları (yalnız teknik modda temelin hiç okunmaması)
+- `metrikKumesiBayraklariTutarlidir()`: teknik/temel kullanım bayrakları (yalnız teknik modda temelin hiç okunmaması)
 
 `PortfolioServiceTest` portföy muhasebesini doğrular (geçici `state.yaml` dosyasıyla):
 
@@ -462,7 +535,13 @@ mvn test -Dtest=BistAdvisorTest
 
 `ScoreGateTest` eşik yorumlamasını doğrular: KNN'de eşiklerin oy ızgarasına (1/5 paylar) tavanlı yuvarlanması, tek komşu oyunun karar üretememesi, RandomForest/SVM'de temel eşiğin korunması.
 
-`CacheStoreTest` önbellek tazelik kuralını doğrular: tolerans penceresi içindeki barın taze, eskisinin bayat sayılması; bozuk dosya güvenliği; yazma/okuma yuvarlanması.
+`CsvPriceCacheTest` önbellek tazelik kuralını doğrular: tolerans penceresi içindeki barın taze, eskisinin bayat sayılması; bozuk dosya güvenliği; yazma/okuma yuvarlanması.
+
+`PortfolioTest` + `PortfolioValidatorTest` portföy çekirdeğini doğrular: ağırlıklı ortalama maliyet, slot/tolerans kontrolleri, satış kuralları, doğrulama sırası (sembol → lot → fiyat → aksiyon) ve doğrulama mesajlarının eski metinlerle birebir aynı kalması.
+
+`BarCsvCodecTest` / `YahooJsonParserTest` saf dönüştürücüleri doğrular: CSV kolon semantiği, bozuk satır/gövdelerin sessizce atlanması, yedek alan kullanımı.
+
+`PriceSeriesServiceTest` fiyat yükleme akışını sahte portlarla doğrular; `ConsoleReportRendererTest` konsol metinlerini, `AdvisorControllerTest` API JSON anahtarlarını kilitler; `ApplicationContextTest` Spring bağlamının kurulmasını (duman testi) doğrular.
 
 `CliModeDetectionTest` çalışma modu ayrımını doğrular: bilinen komutların ve `--cli` bayrağının CLI başlatması, Spring argümanlarının (`--spring.profiles.active=...`) Web modunu bozmaması.
 
@@ -616,69 +695,139 @@ GitHub Actions workflow (`.github/workflows/`):
 
 ```
 org.mesutormanli.bistadvisor
-├── advisor/
-│   └── DailyAdvisor.java                  # Daily recommendation engine
-├── cli/
-│   ├── AdvisorCommands.java               # CLI command implementations (init/run/confirm/status/train)
-│   ├── CliCommandRunner.java              # CLI command dispatch (CommandLineRunner)
-│   ├── CliMode.java                       # CLI/Web mode detection (command detection, --cli marker)
-│   └── InitArgs.java                      # init argument parsing (budget/mode/model/analysis/positions)
-├── config/
-│   ├── AdvisorMode.java                   # Investment mode enum (CONSERVATIVE/BALANCED/AGGRESSIVE)
-│   ├── AnalysisType.java                  # Analysis type enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
-│   ├── AppConfig.java                     # Application configuration
-│   └── ModelType.java                     # ML model enum (RANDOM_FOREST/SVM/KNN)
-├── data/
-│   ├── BistIndices.java                   # BIST index-to-symbol mapping from .properties
-│   ├── CacheStore.java                    # Price series cache (CSV files)
-│   └── YahooClient.java                   # Yahoo Finance OHLCV + fundamentals fetcher
-├── features/
-│   ├── FeatureVector.java                 # 11-dimensional feature vector (sliced 6/5/11 per analysis type)
-│   └── TechnicalFeatures.java             # Technical indicators (RSI/SMA/MACD/volatility)
-├── model/
-│   ├── ClassSpace.java                    # Label-index mapping (safe predictions)
-│   ├── FeatureFrame.java                  # Feature matrix + label converter
-│   ├── KnnStrategy.java                   # KNN classifier (SMILE)
-│   ├── Labeler.java                       # Return-based labeler (BUY/SELL/HOLD)
-│   ├── ModelStrategy.java                 # ML strategy interface
-│   ├── ModelStrategyFactory.java          # Strategy factory
-│   ├── ModelTrainer.java                  # Model training + in-memory cache
-│   ├── RandomForestStrategy.java          # RandomForest one-vs-rest (SMILE)
-│   └── SvmStrategy.java                   # SVM one-vs-rest (SMILE Gaussian kernel)
-├── portfolio/
-│   ├── PortfolioService.java              # Portfolio service (state.yaml persistence)
-│   ├── PortfolioState.java                # Portfolio state (budget/mode/model/analysis type/positions)
-│   └── Position.java                      # Position model (symbol/lots/cost)
+├── domain/                                  # Pure core (no Spring dependency)
+│   ├── advisor/
+│   │   ├── AllocationPlanner.java           # Pure decision engine (SELL/BUY consistency, slot + budget allocation)
+│   │   ├── RiskProfile.java                 # Investment mode enum (CONSERVATIVE/BALANCED/AGGRESSIVE) + thresholds
+│   │   ├── ScoreGate.java                   # Model-aware score thresholds
+│   │   └── Signal.java                      # Recommendation signal (BUY/HOLD/SELL)
+│   ├── market/
+│   │   ├── Bar.java                         # Daily bar (date/close/volume)
+│   │   ├── Fundamentals.java                # Fundamentals (P/E, P/B, dividend, growth, ROE)
+│   │   ├── MarketTime.java                  # Shared market time zone + freshness window
+│   │   └── TechnicalIndicators.java         # Technical indicators (RSI/SMA/MACD/volatility)
+│   ├── ml/
+│   │   ├── ClassSpace.java                  # Label-index mapping (safe predictions)
+│   │   ├── FeatureVector.java               # 11-dimensional feature vector (sliced 6/5/11 per analysis type)
+│   │   ├── KnnStrategy.java                 # KNN classifier (SMILE, k=5)
+│   │   ├── Labeler.java                     # Return-based labeler (BUY/SELL/HOLD)
+│   │   ├── ModelStrategy.java               # ML strategy interface (prediction → Prediction)
+│   │   ├── ModelStrategyFactory.java        # Strategy factory
+│   │   ├── Prediction.java                  # Prediction record (class + score)
+│   │   ├── RandomForestStrategy.java        # RandomForest one-vs-rest (SMILE)
+│   │   ├── SvmStrategy.java                 # SVM one-vs-rest (SMILE Gaussian kernel)
+│   │   └── TrainingSet.java                 # Training matrix (analysis type metric subset)
+│   ├── portfolio/
+│   │   ├── Portfolio.java                   # Money/position accounting aggregate (open-cash model)
+│   │   ├── PortfolioPolicy.java             # Policy constants (TOLERANCE, MAX_POSITIONS)
+│   │   ├── PortfolioSnapshot.java           # state.yaml wire format (raw fields)
+│   │   ├── PortfolioValidator.java          # Draft + rule validation (legacy messages kept verbatim)
+│   │   ├── Position.java                    # Position model (symbol/lots/cost)
+│   │   ├── PositionDraft.java               # Raw position input
+│   │   ├── Transaction.java                 # Transaction (BUY/SELL request)
+│   │   ├── TransactionAction.java           # Transaction type enum (AL/SAT)
+│   │   ├── TransactionOutcome.java          # Apply outcome + rejection reasons
+│   │   └── ValidationResult.java            # Validation result (ok/message)
+│   └── settings/
+│       ├── AdvisorSettings.java             # Settings record (mode/model/analysis/index)
+│       ├── AnalysisType.java                # Analysis type enum (TECHNICAL/FUNDAMENTAL/TECHNICAL_FUNDAMENTAL)
+│       └── ModelType.java                   # ML model enum (RANDOM_FOREST/SVM/KNN)
+├── ports/                                   # Outbound interfaces (dependency inversion gates)
+│   ├── MarketDataSource.java                # Price + fundamentals source port
+│   ├── PortfolioStateStore.java             # Portfolio state store port
+│   └── PriceCache.java                      # Price series cache port
+├── adapters/
+│   ├── cache/
+│   │   ├── BarCsvCodec.java                 # Pure CSV ⇄ Bar conversion
+│   │   └── CsvPriceCache.java               # Price series cache (CSV files, freshness window)
+│   ├── indices/
+│   │   └── BistIndices.java                 # BIST index-to-symbol mapping from .properties
+│   ├── state/
+│   │   └── YamlPortfolioStateStore.java     # state.yaml persistence adapter
+│   └── yahoo/
+│       ├── FundamentalsDayCache.java        # Day-granular TTL cache for fundamentals
+│       ├── RetryingHttpTransport.java       # Throttling + exponential backoff HTTP transport
+│       ├── YahooJsonParser.java             # Pure Yahoo JSON parser
+│       ├── YahooMarketDataSource.java       # MarketDataSource adapter (401 → session renewal)
+│       └── YahooSession.java                # Cookie + crumb session
+├── application/                             # Application services (use-case orchestration)
+│   ├── AnalysisResult.java                  # Analysis result (holding/buy suggestions + summary)
+│   ├── AnalysisService.java                 # Daily recommendation orchestrator (data + model + planner)
+│   ├── FeaturePipeline.java                 # Bars + fundamentals → FeatureVector
+│   ├── ModelRegistry.java                   # In-memory model cache (TYPE:ANALYSIS:INDEX)
+│   ├── ModelTrainingService.java            # Live-data model training
+│   ├── PortfolioService.java                # Portfolio application service (via state store)
+│   ├── PortfolioView.java                   # Portfolio view row
+│   ├── PortfolioViewService.java            # Portfolio view with current prices
+│   ├── PositionView.java                    # Position view row
+│   ├── PriceSeriesService.java              # Price loading flow (cache → source)
+│   ├── Recommendation.java                  # Recommendation record (shared API/CLI)
+│   └── TrainingSetBuilder.java              # Training matrix builder
 ├── web/
-│   ├── AdvisorController.java             # REST API controller (/api/*)
-│   └── StaticPageConfig.java              # Static file serving (index.html)
-└── BistAdvisorApplication.java            # Application entry point (CLI/Web mode selection)
+│   ├── AdvisorController.java               # REST API controller (/api/*)
+│   ├── ApiMapper.java                       # Domain → DTO mapping
+│   ├── StaticPageConfig.java                # Static file serving (index.html)
+│   └── dto/                                 # Typed API contract (JSON keys fixed)
+│       ├── AnalysisResponse.java            # POST /api/analyze response
+│       ├── ConfigDto.java                   # GET /api/config response
+│       ├── ConfirmResponse.java             # POST /api/confirm response
+│       ├── PortfolioDraft.java              # POST /api/portfolio body
+│       ├── PortfolioViewDto.java            # GET /api/portfolio-view response
+│       ├── PositionViewDto.java             # Portfolio view position
+│       ├── RecommendationDto.java           # Recommendation item
+│       ├── SavePortfolioResponse.java       # POST /api/portfolio response
+│       └── TransactionDto.java              # POST /api/confirm transaction
+├── cli/
+│   ├── CliCommandRunner.java                # CLI command dispatch (CommandLineRunner)
+│   ├── CliMode.java                         # CLI/Web mode detection (command detection, --cli marker)
+│   ├── ConfirmArgs.java                     # confirm argument parsing (single item, carries error text)
+│   ├── ConsoleReportRenderer.java           # Console text rendering (legacy output kept verbatim)
+│   ├── InitArgs.java                        # init argument parsing (budget/mode/model/analysis/positions)
+│   └── commands/
+│       ├── CliCommand.java                  # Command interface
+│       ├── ConfirmCommand.java              # confirm: apply transactions (parse + apply in one pass)
+│       ├── InitCommand.java                 # init: portfolio setup
+│       ├── RunCommand.java                  # run: daily recommendations
+│       ├── StatusCommand.java               # status: portfolio summary
+│       └── TrainCommand.java                # train: model training
+├── config/
+│   └── AppConfig.java                       # Application configuration + bean registrations
+└── BistAdvisorApplication.java              # Application entry point (CLI/Web mode selection)
+
 ```
 
 ### Core Components
 
 | Component | Description |
 |-----------|-------------|
-| `DailyAdvisor` | Generates daily BUY/SELL/HOLD recommendations by combining portfolio and ML model |
-| `AdvisorCommands` | CLI command implementations: `init`, `run`, `confirm`, `status`, `train` |
+| `AnalysisService` | Generates daily BUY/SELL/HOLD recommendations by combining portfolio and ML model; one feature computation per symbol |
+| `AllocationPlanner` | Pure decision engine: SELL/HOLD + BUY lists, slot/budget allocation (unit-testable) |
+| `ScoreGate` | Model-aware threshold interpretation (vote-grid rounding for KNN) |
+| `cli/commands/*` | One class per command: `init`, `run`, `confirm`, `status`, `train`; unified behind the `CliCommand` interface |
 | `CliMode` | CLI/Web mode detection: command detection, `--cli` marker stripping, unknown-command rejection |
 | `CliCommandRunner` | CLI command dispatch (`CommandLineRunner`); silent exit on missing/unknown commands |
-| `InitArgs` | `init` argument parsing (budget/mode/model/analysis/positions) + line-by-line error collection |
-| `AdvisorMode` | 3 investment modes: CONSERVATIVE (25% risk), BALANCED (50%), AGGRESSIVE (75%) |
+| `InitArgs` / `ConfirmArgs` | `init`/`confirm` argument parsing; `InitArgs` collects errors line-by-line, `ConfirmArgs` carries the error text |
+| `ConsoleReportRenderer` | Single producer of console output; legacy texts kept verbatim (locked by unit tests) |
+| `RiskProfile` | 3 investment modes: CONSERVATIVE (25% risk), BALANCED (50%), AGGRESSIVE (75%) |
 | `AnalysisType` | 3 analysis types: TECHNICAL (6 technical metrics), FUNDAMENTAL (5 fundamental metrics), TECHNICAL_FUNDAMENTAL (11 metrics) |
-| `YahooClient` | Fetches OHLCV prices + fundamentals (P/E, P/B, dividend, ROE, growth) from Yahoo Finance |
+| `ports/*` | Outbound interfaces: `MarketDataSource`, `PriceCache`, `PortfolioStateStore` |
+| `RetryingHttpTransport` / `YahooSession` | Throttling HTTP transport with exponential backoff (429/5xx); cookie + crumb session (refreshed on 401) |
+| `YahooJsonParser` / `FundamentalsDayCache` | Pure JSON parsing + day-granular TTL cache for fundamentals |
+| `YahooMarketDataSource` | Fetches OHLCV prices + fundamentals (P/E, P/B, dividend, ROE, growth) from Yahoo Finance |
 | `BistIndices` | Defines BIST-30/50/100 and sector indices with symbol lists |
-| `CacheStore` | Caches fetched price series as CSV files in `cache/` directory |
+| `CsvPriceCache` / `BarCsvCodec` | Caches fetched price series as CSV files in `cache/` directory; pure CSV ⇄ Bar conversion |
+| `MarketTime` | Single market time zone (`Europe/Istanbul`) + weekend/holiday-tolerant freshness window |
 | `FeatureVector` | 11 features (sliced as 6 technical / 5 fundamental / 11 per analysis type): RSI, SMA-20/50 ratio, MACD, volatility, volume, P/E, P/B, dividend, growth, ROE |
-| `ModelStrategy` | ML model interface: `train(features, labels, analysisType)`, `predict(features)` → {class, score} |
+| `ModelStrategy` | ML model interface: `train(features, labels, analysisType)`, `predict(features)` → `Prediction` (class + score) |
 | `ClassSpace` | Label-index mapping: safe predictions when classes are missing (avoids the probability-vector size pitfall) |
 | `RandomForestStrategy` | One-vs-rest RandomForest (one binary classifier per observed class) |
 | `SvmStrategy` | One-vs-rest SVM with Gaussian kernel |
 | `KnnStrategy` | k-NN classifier (k=5) |
 | `Labeler` | N-day return labeling: >5% → BUY, <-5% → SELL, else → HOLD |
-| `ModelTrainer` | Live data training (with the analysis type's metric subset), TYPE:ANALYSIS:INDEX-keyed in-memory cache |
-| `PortfolioService` | state.yaml read/write, budget-cash reconciliation (budget = total capital, cash is derived), partial sells, portfolio constraints (max 5 positions) |
-| `AdvisorController` | REST API: portfolio read/update, analysis, confirmation, configuration |
+| `ModelTrainingService` / `TrainingSetBuilder` / `ModelRegistry` | Live data training (with the analysis type's metric subset), TYPE:ANALYSIS:INDEX-keyed in-memory model cache |
+| `Portfolio` | Open-cash accounting (realized P/L flows into cash), partial sells, portfolio constraints (max 5 positions) |
+| `PortfolioService` | Portfolio application service: read/write through the state store (`YamlPortfolioStateStore` ↔ `state.yaml`) + reconciliation |
+| `AdvisorController` / `ApiMapper` | REST API: portfolio read/update, analysis, confirmation, configuration; typed DTOs (`web/dto`) fixing the JSON contract |
 | `BistAdvisorApplication` | Entry point: CLI/Web mode selection (decision lives in `CliMode`) + Spring Shell suppression bean |
 
 ### Budget & Cash Model
@@ -720,7 +869,7 @@ REST controller providing configuration, portfolio management, analysis, and tra
 | `POST` | `/api/confirm` | Confirm transactions | 200 |
 | `GET` | `/api/pending` | Get pending BUY/SELL recommendations | 200 |
 
-### AdvisorMode
+### RiskProfile (Investment Modes)
 
 Three investment modes with configurable thresholds:
 
@@ -771,9 +920,9 @@ Return-based labeling with N=20 day horizon:
 - Return < -5% → SELL (1)
 - Otherwise → HOLD (2)
 
-### YahooClient
+### Yahoo Data Layer
 
-Fetches both OHLCV prices (`v8/finance/chart/`) and fundamentals (`quoteSummary` with crumb/cookie) from Yahoo Finance. Exponential backoff with 3 retries for rate-limiting (429) and 5xx errors. Price output: `date,close,volume`.
+Yahoo access is split into five parts: `RetryingHttpTransport` applies throttling + exponential backoff (3 retries on 429/5xx); `YahooSession` manages cookie/crumb and renews the session on 401; `YahooJsonParser` parses payloads purely; `FundamentalsDayCache` caches fundamentals with a day-granular TTL; `YahooMarketDataSource` composes them under the `MarketDataSource` port. Crumb-requiring requests build the URL with a fresh crumb on every attempt and every request honors `bist.scrape.delay-ms`. Both OHLCV prices (`v8/finance/chart/`) and fundamentals (`quoteSummary` with crumb/cookie) are fetched; training and prediction never re-fetch data for the same symbol. Price output: `date,close,volume`.
 
 ---
 
@@ -847,11 +996,11 @@ All endpoints are served under `/api`.
 | Endpoint | Method | Description | Response |
 |----------|--------|-------------|----------|
 | `/api/config` | GET | Configuration (modes/models/analysis types/indices) | JSON |
-| `/api/portfolio` | GET | Portfolio state | `PortfolioState` |
+| `/api/portfolio` | GET | Portfolio state (state.yaml fields) | `PortfolioSnapshot` |
 | `/api/portfolio` | POST | Update portfolio | `{"status":"ok\|warning\|error"}` |
 | `/api/portfolio-view` | GET | Portfolio with current prices | JSON |
 | `/api/analyze` | POST | Run daily analysis | `AnalysisResult` |
-| `/api/confirm` | POST | Confirm transactions | `{"status":"ok","applied":"N","failed":"M"}` |
+| `/api/confirm` | POST | Confirm transactions | `{"status":"ok","applied":1,"failed":0}` |
 | `/api/pending` | GET | Pending BUY/SELL recommendations | JSON array |
 
 ### Analysis Response Structure
@@ -887,7 +1036,20 @@ Tests use JUnit Jupiter with no network dependency. Inputs are synthetic price s
 | `FeatureVectorTest` | Feature normalization: scaling, clamping of extremes, immutability, per-analysis-type slicing |
 | `AnalysisTypeTest` | Analysis type resolution: key/alias mappings, fallback default on unknown input, metric-subset flags |
 | `ModelStrategiesTest` | Model strategies: class separation, missing/single-class safety, KNN k=5 behavior, training with analysis-type dimensions |
-| `PortfolioServiceTest` | Portfolio accounting: partial sells, budget validation, analysis type persistence, `state.yaml` loading |
+| `PortfolioTest` | Portfolio aggregate: weighted average cost, slot limit, cash/tolerance checks, sell rules, validation order, `restore` |
+| `PortfolioValidatorTest` | Validation messages: budget/symbol/lots/cost format checks, negative cash, position-count limit |
+| `AllocationPlannerTest` | Decision rules: no SELL/BUY clash, slot accounting, sale proceeds joining the budget, "no data" behavior, score fill-in |
+| `ScoreGateTest` | Model-aware thresholds: vote-grid rounding for KNN + minimum neighbor agreement |
+| `PortfolioServiceTest` | Cash accounting: realized P/L reflected in cash, partial/full sells, negative cash, manual-update reconciliation, analysis type persistence, `state.yaml` loading |
+| `CsvPriceCacheTest` | Price cache: weekend/holiday-tolerant freshness window, corrupt-file safety |
+| `BarCsvCodecTest` | Pure CSV ⇄ Bar conversion: OHLCV column semantics, silent skipping of corrupt lines |
+| `YahooJsonParserTest` | Yahoo JSON: skipping empty closes, missing volume, fallback fields, corrupt-body safety |
+| `PriceSeriesServiceTest` | Price loading flow: no source call on fresh cache, refresh on stale, no write on empty reply (fake ports) |
+| `ConfirmArgsTest` | `confirm` argument parsing + legacy error texts |
+| `CliModeDetectionTest` | CLI/Web split: command detection, `--cli` flag, Spring arguments not breaking Web mode |
+| `ConsoleReportRendererTest` | Console texts: report/init/status/confirm/train lines kept verbatim |
+| `AdvisorControllerTest` | API JSON contract: endpoint payload key names + draft/transaction behavior (MockMvc) |
+| `ApplicationContextTest` | Spring context smoke test: dependency-injection wiring of the layers |
 
 ### Running Tests
 
@@ -927,20 +1089,30 @@ mvn test -Dtest=BistAdvisorTest
 
 `AnalysisTypeTest` verifies the resolution contract:
 
-- `fromKeyAnahtarTakmaAdVeEtiketleriCozer()`: keys, labels and aliases are resolved
+- `fromKeyTumSozDizimleriniCozer()`: keys, labels and aliases are resolved
 - `fromKeyBilinmeyenGirdideVarsayilanaDuser()`: unknown input falls back to `TECHNICAL_FUNDAMENTAL`
-- `metrikKumesiBayraklariDogru()`: technical/subset usage flags (fundamentals never read in technical-only mode)
+- `metrikKumesiBayraklariTutarlidir()`: technical/subset usage flags (fundamentals never read in technical-only mode)
 
 `PortfolioServiceTest` verifies portfolio accounting (with a temp `state.yaml`):
 
-- `kismiSatisPozisyonuKuculturVeNakitTuretilir()`: partial sell + cash derivation
-- `fazlaSatisReddedilir()` / `tamSatisPozisyonuKaldirir()`: lot limits and position closing
-- `nakitUzerindeAlimReddedilir()`: buys beyond available cash are rejected
-- `butceAsimiDogrulamaylaBildirilir()`: capital-overspend warning
+- `initPortfolioNakdiSermayedenKurar()`: budget − cost = cash setup
+- `kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir()`: partial sell + realized P/L reflected in cash
+- `tamSatisPozisyonuKaldirirVeKariYansitir()` / `zararliSatisNakdiAzaltir()`: full-sell profit/loss accounting
+- `fazlaSatisReddedilir()` / `nakitUzerindeAlimReddedilir()`: lot and cash limits
+- `negatifNakitDogrulamaylaBildirilir()`: negative-cash warning
+- `updatePortfolioButceDegisikliginiNakdeIsler()` / `updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler()`: manual-update reconciliation
 - `analizTipiInitIleAyarlanirVeYamlaYazilir()`: analysis type set via init and written to `state.yaml`
 - `updatePortfolioAnalizTipiniGunceller()`: analysis type update + preservation on `null` + alias resolution
 - `analizTipiAlanOlmayanYamldaVarsayilanaDuser()`: legacy YAML without an `analysisType` field falls back to the default
 - `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` fields are loaded as-is
+
+`PortfolioTest` + `PortfolioValidatorTest` verify the portfolio core: weighted average cost, slot/tolerance checks, sell rules, validation order (symbol → lots → price → action) and validation messages kept verbatim.
+
+`BarCsvCodecTest` / `YahooJsonParserTest` verify the pure converters: CSV column semantics, silent skipping of corrupt lines/payloads, fallback field usage.
+
+`PriceSeriesServiceTest` verifies the price loading flow with fake ports; `ConsoleReportRendererTest` locks the console texts, `AdvisorControllerTest` locks the API JSON keys; `ApplicationContextTest` verifies the Spring context wiring (smoke test).
+
+`CliModeDetectionTest` verifies the run-mode split: known commands and the `--cli` flag start the CLI, Spring arguments (`--spring.profiles.active=...`) do not break Web mode.
 
 ---
 
