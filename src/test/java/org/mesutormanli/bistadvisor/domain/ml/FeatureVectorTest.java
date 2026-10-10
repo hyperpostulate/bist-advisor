@@ -1,8 +1,9 @@
-package org.mesutormanli.bistadvisor.features;
+package org.mesutormanli.bistadvisor.domain.ml;
 
 import org.junit.jupiter.api.Test;
-import org.mesutormanli.bistadvisor.config.AnalysisType;
-import org.mesutormanli.bistadvisor.data.YahooClient.Fundamentals;
+import org.mesutormanli.bistadvisor.domain.market.Bar;
+import org.mesutormanli.bistadvisor.domain.market.Fundamentals;
+import org.mesutormanli.bistadvisor.domain.settings.AnalysisType;
 
 import java.util.List;
 
@@ -80,10 +81,10 @@ class FeatureVectorTest {
      */
     @Test
     void fromBarsHamDegerleriUretirVeNormalizeAyriNesneDoner() {
-        List<TechnicalFeatures.Bar> bars = List.of(
-                new TechnicalFeatures.Bar("2026-01-01", 100, 1000),
-                new TechnicalFeatures.Bar("2026-01-02", 101, 1200),
-                new TechnicalFeatures.Bar("2026-01-03", 102, 900));
+        List<Bar> bars = List.of(
+                new Bar("2026-01-01", 100, 1000),
+                new Bar("2026-01-02", 101, 1200),
+                new Bar("2026-01-03", 102, 900));
         FeatureVector raw = FeatureVector.fromBars(Fundamentals.EMPTY, bars);
         FeatureVector normalized = raw.normalize();
 

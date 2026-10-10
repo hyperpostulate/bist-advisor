@@ -1,4 +1,4 @@
-package org.mesutormanli.bistadvisor.config;
+package org.mesutormanli.bistadvisor.domain.settings;
 
 import org.junit.jupiter.api.Test;
 

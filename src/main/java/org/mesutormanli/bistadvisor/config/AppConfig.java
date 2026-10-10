@@ -1,7 +1,9 @@
 package org.mesutormanli.bistadvisor.config;
 
+import org.mesutormanli.bistadvisor.cli.ConsoleReportRenderer;
 import org.mesutormanli.bistadvisor.domain.settings.ModelType;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -46,6 +48,19 @@ public class AppConfig {
 
     @Value("${bist.scrape.delay-ms:250}")
     private int scrapeDelayMs;
+
+    /**
+     * Konsol raporlayıcısını standart çıktı akışına bağlı kurar.
+     * <p>
+     * CLI komutları raporlayıcıyı kurucuyla alır; bu kayıt onu Spring bağlamına
+     * tanıtır. Sınıf kendisi çerçeve bağımsız kalır.
+     *
+     * @return standart çıktıya yazan {@link ConsoleReportRenderer}
+     */
+    @Bean
+    public ConsoleReportRenderer consoleReportRenderer() {
+        return new ConsoleReportRenderer();
+    }
 
     /**
      * Yapılandırılan varsayılan model türünü çözer.

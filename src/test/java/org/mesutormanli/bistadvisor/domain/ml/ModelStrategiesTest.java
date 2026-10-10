@@ -1,11 +1,10 @@
-package org.mesutormanli.bistadvisor.model;
+package org.mesutormanli.bistadvisor.domain.ml;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.mesutormanli.bistadvisor.config.AnalysisType;
-import org.mesutormanli.bistadvisor.config.ModelType;
-import org.mesutormanli.bistadvisor.features.FeatureVector;
+import org.mesutormanli.bistadvisor.domain.settings.AnalysisType;
+import org.mesutormanli.bistadvisor.domain.settings.ModelType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -142,10 +141,10 @@ class ModelStrategiesTest {
         ModelStrategy strategy = ModelStrategyFactory.create(type);
         strategy.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
-        assertEquals(Labeler.BUY, (int) strategy.predict(point(0.2))[0], type.name());
-        assertEquals(Labeler.SELL, (int) strategy.predict(point(0.5))[0], type.name());
-        assertEquals(Labeler.HOLD, (int) strategy.predict(point(0.8))[0], type.name());
-        assertTrue(strategy.predict(point(0.2))[1] > 0.5, type.name() + " skoru 0.5 üstü olmalı");
+        assertEquals(Labeler.BUY, strategy.predict(point(0.2)).classLabel(), type.name());
+        assertEquals(Labeler.SELL, strategy.predict(point(0.5)).classLabel(), type.name());
+        assertEquals(Labeler.HOLD, strategy.predict(point(0.8)).classLabel(), type.name());
+        assertTrue(strategy.predict(point(0.2)).score() > 0.5, type.name() + " skoru 0.5 üstü olmalı");
     }
 
     /**
@@ -166,9 +165,9 @@ class ModelStrategiesTest {
         ModelStrategy strategy = ModelStrategyFactory.create(type);
         strategy.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
-        double[] pred = strategy.predict(point(0.2));
-        assertTrue(pred[0] == Labeler.BUY || pred[0] == Labeler.HOLD,
-                type.name() + " yalnız gözlenen sınıflardan birini dönmeli: " + pred[0]);
+        Prediction pred = strategy.predict(point(0.2));
+        assertTrue(pred.classLabel() == Labeler.BUY || pred.classLabel() == Labeler.HOLD,
+                type.name() + " yalnız gözlenen sınıflardan birini dönmeli: " + pred.classLabel());
     }
 
     /**
@@ -188,9 +187,9 @@ class ModelStrategiesTest {
         ModelStrategy strategy = ModelStrategyFactory.create(type);
         strategy.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
-        double[] pred = strategy.predict(point(0.9));
-        assertEquals(Labeler.HOLD, (int) pred[0], type.name());
-        assertTrue(pred[1] > 0, type.name() + " skoru pozitif olmalı");
+        Prediction pred = strategy.predict(point(0.9));
+        assertEquals(Labeler.HOLD, pred.classLabel(), type.name());
+        assertTrue(pred.score() > 0, type.name() + " skoru pozitif olmalı");
     }
 
     /**
@@ -198,15 +197,15 @@ class ModelStrategiesTest {
      * <p>
      * Senaryo: {@link KnnStrategy} eğitilmeden doğrudan sorgulanır. Beklenen
      * davranış: varsayılan sınıf olarak {@link Labeler#HOLD} ile skor 0,0 döner
-     * ({@code {HOLD, 0.0}}); sıfır güven, eğitimsiz modelin öneri üretmediğini
+     * ({@code Prediction.NONE}); sıfır güven, eğitimsiz modelin öneri üretmediğini
      * gösterir.
      */
     @Test
     void egitilmisModelVarsayilanSinifiTutmaz() {
         ModelStrategy strategy = new KnnStrategy();
-        double[] pred = strategy.predict(point(0.5));
-        assertEquals(Labeler.HOLD, (int) pred[0]);
-        assertEquals(0.0, pred[1], 1e-9);
+        Prediction pred = strategy.predict(point(0.5));
+        assertEquals(Labeler.HOLD, pred.classLabel());
+        assertEquals(0.0, pred.score(), 1e-9);
     }
 
     /**
@@ -233,8 +232,7 @@ class ModelStrategiesTest {
         KnnStrategy knn = new KnnStrategy();
         knn.train(x, y, AnalysisType.TECHNICAL_FUNDAMENTAL);
 
-        double[] pred = knn.predict(point(0.45));
-        assertEquals(Labeler.SELL, (int) pred[0],
+        assertEquals(Labeler.SELL, knn.predict(point(0.45)).classLabel(),
                 "k=5 ile cogunluk sinif secilmeli; k=1 olsaydi BUY (0) secilirdi");
     }
 
@@ -276,9 +274,9 @@ class ModelStrategiesTest {
             ModelStrategy strategy = ModelStrategyFactory.create(type);
             strategy.train(x, y, a);
 
-            assertEquals(Labeler.BUY, (int) strategy.predict(point(0.2, dim))[0], type + "/" + a);
-            assertEquals(Labeler.SELL, (int) strategy.predict(point(0.5, dim))[0], type + "/" + a);
-            assertEquals(Labeler.HOLD, (int) strategy.predict(point(0.8, dim))[0], type + "/" + a);
+            assertEquals(Labeler.BUY, strategy.predict(point(0.2, dim)).classLabel(), type + "/" + a);
+            assertEquals(Labeler.SELL, strategy.predict(point(0.5, dim)).classLabel(), type + "/" + a);
+            assertEquals(Labeler.HOLD, strategy.predict(point(0.8, dim)).classLabel(), type + "/" + a);
         }
     }
 }

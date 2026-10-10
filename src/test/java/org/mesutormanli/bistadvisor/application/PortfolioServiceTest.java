@@ -1,10 +1,12 @@
-package org.mesutormanli.bistadvisor.portfolio;
+package org.mesutormanli.bistadvisor.application;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mesutormanli.bistadvisor.config.AnalysisType;
-import org.mesutormanli.bistadvisor.config.AppConfig;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.mesutormanli.bistadvisor.adapters.state.YamlPortfolioStateStore;
+import org.mesutormanli.bistadvisor.domain.portfolio.PortfolioSnapshot;
+import org.mesutormanli.bistadvisor.domain.portfolio.Position;
+import org.mesutormanli.bistadvisor.domain.portfolio.ValidationResult;
+import org.mesutormanli.bistadvisor.domain.settings.AnalysisType;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,19 +32,15 @@ class PortfolioServiceTest {
     /**
      * Geçici dizin altında yeni bir {@link PortfolioService} kurar.
      * <p>
-     * {@code @TempDir} altında {@code cache} ve {@code state.yaml} yolları
-     * belirlenir; {@link AppConfig} alanları {@code ReflectionTestUtils} ile
-     * doldurularak servis gerçek proje dizinlerinden izole edilir. Servis
-     * kurucuda durumu diskten yüklediği için önceden yazılmış {@code state.yaml}
-     * varsa aynen okunur.
+     * Servis, {@code @TempDir} altındaki {@code state.yaml} dosyasını kullanan
+     * bir {@link YamlPortfolioStateStore} ile kurulur. Servis kurucuda durumu
+     * diskten yüklediği için önceden yazılmış {@code state.yaml} varsa aynen
+     * okunur.
      *
      * @return geçici dizine bağlı yeni bir {@link PortfolioService}
      */
     private PortfolioService newService() {
-        AppConfig cfg = new AppConfig();
-        ReflectionTestUtils.setField(cfg, "cacheDir", dir.resolve("cache").toString());
-        ReflectionTestUtils.setField(cfg, "stateFile", dir.resolve("state.yaml").toString());
-        return new PortfolioService(cfg);
+        return new PortfolioService(new YamlPortfolioStateStore(dir.resolve("state.yaml")));
     }
 
     /**
@@ -51,18 +49,18 @@ class PortfolioServiceTest {
      * Senaryo: 50.000 TL bütçeyle 100×240 TL'lik THYAO (24.000 TL) ve 50×351 TL'lik
      * ASELS (17.550 TL) pozisyonları tanımlanır. Beklenen davranış: yatırılan
      * maliyet 41.550 TL olur, geriye kalan 8.450 TL nakit olarak yazılır ve
-     * doğrulama uyarısız ({@code null}) geçer.
+     * doğrulama uyarısız geçer.
      */
     @Test
     void initPortfolioNakdiSermayedenKurar() {
         PortfolioService svc = newService();
 
-        svc.initPortfolio(50_000, "BALANCED", "RANDOM_FOREST", null,
+        svc.initialize(50_000, "BALANCED", "RANDOM_FOREST", null,
                 List.of(new Position("THYAO", 100, 240), new Position("ASELS", 50, 351)));
 
         assertEquals(8_450, svc.availableCash(), 0.01);
         assertEquals(41_550, svc.investedCost(), 0.01);
-        assertNull(svc.validatePortfolio());
+        assertTrue(svc.validate().ok());
     }
 
     /**
@@ -77,14 +75,14 @@ class PortfolioServiceTest {
     @Test
     void kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
-        assertTrue(svc.applyTransaction("thyao", "AL", 100, 240));
+        assertTrue(svc.apply("thyao", "AL", 100, 240));
         assertEquals(76_000, svc.availableCash(), 0.01);
 
-        assertTrue(svc.applyTransaction("THYAO", "SAT", 40, 250));
+        assertTrue(svc.apply("THYAO", "SAT", 40, 250));
 
-        PortfolioState s = svc.getState();
+        PortfolioSnapshot s = svc.snapshot();
         assertEquals(1, s.positions.size());
         assertEquals("THYAO", s.positions.get(0).symbol());
         assertEquals(60, s.positions.get(0).lots());
@@ -92,7 +90,7 @@ class PortfolioServiceTest {
         assertEquals(86_000, svc.availableCash(), 0.01);
         assertEquals(100_400, svc.availableCash() + svc.investedCost(), 0.01);
         assertEquals(100_000, s.budget, 0.01);
-        assertNull(svc.validatePortfolio());
+        assertTrue(svc.validate().ok());
     }
 
     /**
@@ -105,14 +103,14 @@ class PortfolioServiceTest {
     @Test
     void tamSatisPozisyonuKaldirirVeKariYansitir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
-        assertTrue(svc.applyTransaction("THYAO", "AL", 100, 240));
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        assertTrue(svc.apply("THYAO", "AL", 100, 240));
 
-        assertTrue(svc.applyTransaction("THYAO", "SAT", 100, 250));
+        assertTrue(svc.apply("THYAO", "SAT", 100, 250));
 
-        assertTrue(svc.getState().positions.isEmpty());
+        assertTrue(svc.snapshot().positions.isEmpty());
         assertEquals(101_000, svc.availableCash(), 0.01);
-        assertEquals(100_000, svc.getState().budget, 0.01);
+        assertEquals(100_000, svc.snapshot().budget, 0.01);
     }
 
     /**
@@ -125,10 +123,10 @@ class PortfolioServiceTest {
     @Test
     void zararliSatisNakdiAzaltir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
-        assertTrue(svc.applyTransaction("THYAO", "AL", 100, 240));
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        assertTrue(svc.apply("THYAO", "AL", 100, 240));
 
-        assertTrue(svc.applyTransaction("THYAO", "SAT", 100, 200));
+        assertTrue(svc.apply("THYAO", "SAT", 100, 200));
 
         assertEquals(96_000, svc.availableCash(), 0.01);
     }
@@ -142,12 +140,12 @@ class PortfolioServiceTest {
     @Test
     void fazlaSatisReddedilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
-        assertTrue(svc.applyTransaction("THYAO", "AL", 100, 240));
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        assertTrue(svc.apply("THYAO", "AL", 100, 240));
 
-        assertFalse(svc.applyTransaction("THYAO", "SAT", 150, 250));
+        assertFalse(svc.apply("THYAO", "SAT", 150, 250));
 
-        PortfolioState s = svc.getState();
+        PortfolioSnapshot s = svc.snapshot();
         assertEquals(1, s.positions.size());
         assertEquals(100, s.positions.get(0).lots());
     }
@@ -163,32 +161,32 @@ class PortfolioServiceTest {
     @Test
     void nakitUzerindeAlimReddedilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
-        assertTrue(svc.applyTransaction("THYAO", "AL", 400, 240));
-        assertFalse(svc.applyTransaction("THYAO", "AL", 100, 240));
-        assertTrue(svc.applyTransaction("THYAO", "AL", 10, 240));
+        assertTrue(svc.apply("THYAO", "AL", 400, 240));
+        assertFalse(svc.apply("THYAO", "AL", 100, 240));
+        assertTrue(svc.apply("THYAO", "AL", 10, 240));
 
         assertEquals(1_600, svc.availableCash(), 0.01);
-        assertNull(svc.validatePortfolio());
+        assertTrue(svc.validate().ok());
     }
 
     /**
      * Negatif nakdin doğrulama uyarısıyla bildirilmesi.
      * <p>
      * Senaryo: 1.000 TL bütçeyle maliyeti 2.000 TL olan 10 lot THYAO (200 TL)
-     * yüklenir. Beklenen davranış: nakit −1.000 TL'ye iner ve
-     * {@code validatePortfolio} {@code "nakit"} kelimesini içeren bir uyarı
-     * döndürür.
+     * yüklenir. Beklenen davranış: nakit −1.000 TL'ye iner ve {@code validate}
+     * {@code "nakit"} kelimesini içeren bir uyarı döndürür.
      */
     @Test
     void negatifNakitDogrulamaylaBildirilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(1_000, "BALANCED", "RANDOM_FOREST", null,
+        svc.initialize(1_000, "BALANCED", "RANDOM_FOREST", null,
                 List.of(new Position("THYAO", 10, 200)));
 
-        String warning = svc.validatePortfolio();
-        assertNotNull(warning);
+        ValidationResult result = svc.validate();
+        assertFalse(result.ok());
+        String warning = result.message();
         assertTrue(warning.contains("nakit"), "uyarı nakit sorununu içermeli: " + warning);
         assertEquals(-1_000, svc.availableCash(), 0.01);
     }
@@ -203,13 +201,13 @@ class PortfolioServiceTest {
     @Test
     void updatePortfolioButceDegisikliginiNakdeIsler() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
 
-        svc.updatePortfolio(110_000, null, null, null, null, null);
+        svc.update(110_000, null, null, null, null, null);
         assertEquals(110_000, svc.availableCash(), 0.01);
 
-        svc.updatePortfolio(105_000, null, null, null, null, null);
+        svc.update(105_000, null, null, null, null, null);
         assertEquals(105_000, svc.availableCash(), 0.01);
     }
 
@@ -224,12 +222,12 @@ class PortfolioServiceTest {
     @Test
     void updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
-        svc.updatePortfolio(0, null, null, null, null, List.of(new Position("THYAO", 10, 240)));
+        svc.update(0, null, null, null, null, List.of(new Position("THYAO", 10, 240)));
         assertEquals(97_600, svc.availableCash(), 0.01);
 
-        svc.updatePortfolio(0, null, null, null, null, List.of());
+        svc.update(0, null, null, null, null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
     }
 
@@ -239,7 +237,7 @@ class PortfolioServiceTest {
      * Senaryo: geçici dizine bütçe 1.000, nakit 500 ve 10 lot THYAO 90 TL maliyetli
      * pozisyon içeren YAML metin bloğu yazılır. Beklenen davranış: yeni servis bu
      * durumu kurucuda aynen okur; nakit 500 TL ve bütçe 1.000 TL olduğu gibi
-     * görünür.
+     * görünür (nakit yeniden hesaplanmaz).
      *
      * @throws IOException test YAML dosyası yazılamazsa
      */
@@ -257,7 +255,7 @@ class PortfolioServiceTest {
         PortfolioService svc = newService();
 
         assertEquals(500, svc.availableCash(), 0.01);
-        assertEquals(1_000, svc.getState().budget, 0.01);
+        assertEquals(1_000, svc.snapshot().budget, 0.01);
     }
 
     /**
@@ -271,17 +269,17 @@ class PortfolioServiceTest {
     @Test
     void analizTipiInitIleAyarlanirVeYamlaYazilir() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", "TECHNICAL", List.of());
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", "TECHNICAL", List.of());
 
         assertEquals(AnalysisType.TECHNICAL, svc.analysisType());
-        assertEquals("TECHNICAL", svc.getState().analysisType);
+        assertEquals("TECHNICAL", svc.snapshot().analysisType);
 
         PortfolioService reloaded = newService();
         assertEquals(AnalysisType.TECHNICAL, reloaded.analysisType());
     }
 
     /**
-     * Analiz tipinin {@code updatePortfolio} ile güncellenmesi, null bırakıldığında korunması.
+     * Analiz tipinin {@code update} ile güncellenmesi, null bırakıldığında korunması.
      * <p>
      * Senaryo: varsayılan tip {@code YALNIZCA_TEMEL} takma adıyla güncellenir, ardından
      * analiz tipi {@code null} geçilerek başka bir güncelleme yapılır. Beklenen davranış:
@@ -291,13 +289,13 @@ class PortfolioServiceTest {
     @Test
     void updatePortfolioAnalizTipiniGunceller() {
         PortfolioService svc = newService();
-        svc.initPortfolio(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, svc.analysisType());
 
-        svc.updatePortfolio(0, null, null, "YALNIZCA_TEMEL", null, null);
+        svc.update(0, null, null, "YALNIZCA_TEMEL", null, null);
         assertEquals(AnalysisType.FUNDAMENTAL, svc.analysisType());
 
-        svc.updatePortfolio(0, null, null, null, null, null);
+        svc.update(0, null, null, null, null, null);
         assertEquals(AnalysisType.FUNDAMENTAL, svc.analysisType());
     }
 

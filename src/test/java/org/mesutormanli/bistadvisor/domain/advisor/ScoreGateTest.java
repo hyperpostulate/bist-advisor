@@ -1,7 +1,8 @@
-package org.mesutormanli.bistadvisor.advisor;
+package org.mesutormanli.bistadvisor.domain.advisor;
 
 import org.junit.jupiter.api.Test;
-import org.mesutormanli.bistadvisor.config.ModelType;
+import org.mesutormanli.bistadvisor.domain.ml.ModelStrategyFactory;
+import org.mesutormanli.bistadvisor.domain.settings.ModelType;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -11,12 +12,23 @@ import static org.junit.jupiter.api.Assertions.*;
  * KNN'de komşu oyları beş komşu ({@code KnnStrategy.DEFAULT_K = 5}) üzerinden
  * sayıldığından skorlar 0,2'lik ızgaradadır; eşikler bu ızgaraya yukarı
  * yuvarlanır ve en az iki komşu oyu (0,40) kadar olur. SVM ve RandomForest'te ise
- * taban eşik aynen korunur. Sayısal karşılaştırmalar sabit
- * {@code DELTA = 1e-9} kayan nokta toleransıyla yapılır.
+ * taban eşik aynen korunur. Kapı, model stratejisinin bildirdiği skor çözünürlüğüyle
+ * ({@code ModelStrategyFactory.create(type).scoreResolution()}) kurulur. Sayısal
+ * karşılaştırmalar sabit {@code DELTA = 1e-9} kayan nokta toleransıyla yapılır.
  */
 class ScoreGateTest {
 
     private static final double DELTA = 1e-9;
+
+    /**
+     * Model türü için o modelin skor çözünürlüğüyle karar kapısı kurar.
+     *
+     * @param type model türü
+     * @return modelin skor ızgarasına göre eşikleri yuvarlayan {@link ScoreGate}
+     */
+    private static ScoreGate gate(ModelType type) {
+        return ScoreGate.discretized(ModelStrategyFactory.create(type).scoreResolution());
+    }
 
     /**
      * KNN eşiklerinin 0,2'lik oy ızgarasına yukarı yuvarlanması.
@@ -28,11 +40,12 @@ class ScoreGateTest {
      */
     @Test
     void knnEsikleriOyIzgarasinaYuvarlanir() {
-        assertEquals(0.4, ScoreGate.effectiveThreshold(ModelType.KNN, 0.20), DELTA);
-        assertEquals(0.4, ScoreGate.effectiveThreshold(ModelType.KNN, 0.25), DELTA);
-        assertEquals(0.4, ScoreGate.effectiveThreshold(ModelType.KNN, 0.30), DELTA);
-        assertEquals(0.6, ScoreGate.effectiveThreshold(ModelType.KNN, 0.60), DELTA);
-        assertEquals(0.8, ScoreGate.effectiveThreshold(ModelType.KNN, 0.75), DELTA);
+        ScoreGate knn = gate(ModelType.KNN);
+        assertEquals(0.4, knn.effectiveThreshold(0.20), DELTA);
+        assertEquals(0.4, knn.effectiveThreshold(0.25), DELTA);
+        assertEquals(0.4, knn.effectiveThreshold(0.30), DELTA);
+        assertEquals(0.6, knn.effectiveThreshold(0.60), DELTA);
+        assertEquals(0.8, knn.effectiveThreshold(0.75), DELTA);
     }
 
     /**
@@ -44,8 +57,9 @@ class ScoreGateTest {
      */
     @Test
     void knnTekKomsuOyuKararUretmez() {
-        assertFalse(ScoreGate.passes(ModelType.KNN, 0.20, 0.20));
-        assertTrue(ScoreGate.passes(ModelType.KNN, 0.40, 0.20));
+        ScoreGate knn = gate(ModelType.KNN);
+        assertFalse(knn.passes(0.20, 0.20));
+        assertTrue(knn.passes(0.40, 0.20));
     }
 
     /**
@@ -57,9 +71,9 @@ class ScoreGateTest {
      */
     @Test
     void digerModellerdeTemelEsikKorunur() {
-        assertEquals(0.60, ScoreGate.effectiveThreshold(ModelType.RANDOM_FOREST, 0.60), DELTA);
-        assertEquals(0.30, ScoreGate.effectiveThreshold(ModelType.SVM, 0.30), DELTA);
-        assertTrue(ScoreGate.passes(ModelType.RANDOM_FOREST, 0.60, 0.60));
-        assertFalse(ScoreGate.passes(ModelType.SVM, 0.29, 0.30));
+        assertEquals(0.60, gate(ModelType.RANDOM_FOREST).effectiveThreshold(0.60), DELTA);
+        assertEquals(0.30, gate(ModelType.SVM).effectiveThreshold(0.30), DELTA);
+        assertTrue(gate(ModelType.RANDOM_FOREST).passes(0.60, 0.60));
+        assertFalse(gate(ModelType.SVM).passes(0.29, 0.30));
     }
 }

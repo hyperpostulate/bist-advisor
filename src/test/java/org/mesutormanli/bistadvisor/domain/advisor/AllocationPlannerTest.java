@@ -1,13 +1,13 @@
-package org.mesutormanli.bistadvisor.advisor;
+package org.mesutormanli.bistadvisor.domain.advisor;
 
 import org.junit.jupiter.api.Test;
-import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.CandidateInput;
-import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.HoldingInput;
-import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.Plan;
-import org.mesutormanli.bistadvisor.advisor.AllocationPlanner.Planned;
-import org.mesutormanli.bistadvisor.config.AdvisorMode;
-import org.mesutormanli.bistadvisor.config.ModelType;
-import org.mesutormanli.bistadvisor.model.Labeler;
+import org.mesutormanli.bistadvisor.domain.advisor.AllocationPlanner.CandidateInput;
+import org.mesutormanli.bistadvisor.domain.advisor.AllocationPlanner.HoldingInput;
+import org.mesutormanli.bistadvisor.domain.advisor.AllocationPlanner.Plan;
+import org.mesutormanli.bistadvisor.domain.advisor.AllocationPlanner.Planned;
+import org.mesutormanli.bistadvisor.domain.ml.Labeler;
+import org.mesutormanli.bistadvisor.domain.ml.ModelStrategyFactory;
+import org.mesutormanli.bistadvisor.domain.settings.ModelType;
 
 import java.util.List;
 
@@ -18,16 +18,27 @@ import static org.junit.jupiter.api.Assertions.*;
  * çakışmasının engellenmesi, pozisyon slot yönetimi, satış gelirinin bütçeye
  * katılması, holding notlarının ve eşiğin altındaki adayların elenmesi.
  * <p>
- * Bütün senaryolar {@code MODE = AdvisorMode.CONSERVATIVE} sabitiyle koşturulur:
+ * Bütün senaryolar {@code MODE = RiskProfile.CONSERVATIVE} sabitiyle koşturulur:
  * bu mod %25 risk payı ({@code riskPct}), 0,75 alım eşiği ({@code buyThreshold}),
  * %10 stop-loss ({@code stopLossPct}) ve 0,30 SAT skor eşiği
- * ({@code sellScoreThreshold}) değerlerini kullanır. Model tipi her senaryoda
- * {@link ModelType#RANDOM_FOREST} olduğundan {@link ScoreGate} taban eşikleri
- * aynen uygular. Testler deterministiktir; ağa çıkmaz.
+ * ({@code sellScoreThreshold}) değerlerini kullanır. Skor kapısı her senaryoda
+ * {@link ModelType#RANDOM_FOREST} stratejisinin çözünürlüğüyle kurulduğundan
+ * {@link ScoreGate} taban eşikleri aynen uygular. Testler deterministiktir; ağa
+ * çıkmaz.
  */
 class AllocationPlannerTest {
 
-    private static final AdvisorMode MODE = AdvisorMode.CONSERVATIVE;
+    private static final RiskProfile MODE = RiskProfile.CONSERVATIVE;
+
+    /**
+     * Model türü için o modelin skor çözünürlüğüyle karar kapısı kurar.
+     *
+     * @param type model türü
+     * @return modelin skor ızgarasına göre eşikleri yuvarlayan {@link ScoreGate}
+     */
+    private static ScoreGate gate(ModelType type) {
+        return ScoreGate.discretized(ModelStrategyFactory.create(type).scoreResolution());
+    }
 
     /**
      * Stop-loss'a düşen sembolün aynı turda yeniden satın alınmaması.
@@ -44,9 +55,9 @@ class AllocationPlannerTest {
         CandidateInput candidate = new CandidateInput("ASTOR", 170.0, 0.90, Labeler.BUY, true);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(candidate),
-                MODE, ModelType.RANDOM_FOREST, 10_000, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 10_000, 5);
 
-        assertEquals("SAT", plan.holdings().get(0).action());
+        assertEquals(Signal.SAT, plan.holdings().get(0).action());
         assertTrue(plan.buys().isEmpty(), "SAT işaretli sembol AL adayı olmamalı: " + plan.buys());
     }
 
@@ -69,7 +80,7 @@ class AllocationPlannerTest {
         CandidateInput brandNew = new CandidateInput("ZZZ", 50.0, 0.95, Labeler.BUY, false);
 
         Plan plan = AllocationPlanner.plan(List.of(h1, h2, h3, h4, h5),
-                List.of(addExisting, brandNew), MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                List.of(addExisting, brandNew), MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
         assertEquals(0, plan.buySlots());
         assertEquals(1, plan.buys().size(), "slot yokken yalnız mevcut pozisyona ekleme önerilmeli");
@@ -96,7 +107,7 @@ class AllocationPlannerTest {
         CandidateInput brandNew = new CandidateInput("ZZZ", 50.0, 0.90, Labeler.BUY, false);
 
         Plan plan = AllocationPlanner.plan(List.of(sold, h2, h3, h4, h5),
-                List.of(addExisting, brandNew), MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                List.of(addExisting, brandNew), MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
         assertEquals(1, plan.buySlots());
         assertEquals(2, plan.buys().size());
@@ -118,7 +129,7 @@ class AllocationPlannerTest {
         CandidateInput buy = new CandidateInput("AKBNK", 10.0, 0.90, Labeler.BUY, false);
 
         Plan plan = AllocationPlanner.plan(List.of(sold), List.of(buy),
-                MODE, ModelType.RANDOM_FOREST, 0, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 0, 5);
 
         assertEquals(20_000, plan.plannedCapital(), 0.01);
         assertEquals(1, plan.buys().size());
@@ -130,7 +141,7 @@ class AllocationPlannerTest {
      * <p>
      * Senaryo: 240 TL maliyetli THYAO 250 TL'dedir (+%4,17 kâr, stop-loss yok) ve
      * model skoru 0.42'dir. Beklenen davranış: TUT kararı verilir,
-     * {@link Planned#score} 0.42 olarak aynen taşınır ve {@link Planned#note}
+     * {@code score()} 0.42 olarak aynen taşınır ve {@code note()}
      * {@code +4.17%} yüzdesiyle başlar.
      */
     @Test
@@ -138,10 +149,10 @@ class AllocationPlannerTest {
         HoldingInput holding = new HoldingInput("THYAO", 100, 240.0, 250.0, Labeler.HOLD, 0.42);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
-                MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
         Planned p = plan.holdings().get(0);
-        assertEquals("TUT", p.action());
+        assertEquals(Signal.TUT, p.action());
         assertEquals(0.42, p.score(), 1e-9);
         assertTrue(p.note().startsWith("+4.17%"), "not yüzden içermeli: " + p.note());
     }
@@ -150,19 +161,19 @@ class AllocationPlannerTest {
      * Fiyat verisi olmayan pozisyonda sahte fiyat/skor üretilmemesi ve uyarı verilmesi.
      * <p>
      * Senaryo: fiyatı, sınıfı ve skoru bilinmeyen (null) bir BOZUK pozisyonu
-     * sunulur. Beklenen davranış: temkinli TUT kararı çıkar; ancak
-     * {@link Planned#price} ve {@link Planned#score} null kalır (sahte değer
-     * uydurulmaz) ve {@code plan.warnings()} tam 1 uyarı içerir.
+     * sunulur. Beklenen davranış: temkinli TUT kararı çıkar; ancak {@code price()}
+     * ve {@code score()} null kalır (sahte değer uydurulmaz) ve
+     * {@code plan.warnings()} tam 1 uyarı içerir.
      */
     @Test
     void fiyatVerisiOlmayanPozisyondaSahteFiyatUretilmez() {
         HoldingInput holding = new HoldingInput("BOZUK", 100, 240.0, null, null, null);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
-                MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
         Planned p = plan.holdings().get(0);
-        assertEquals("TUT", p.action());
+        assertEquals(Signal.TUT, p.action());
         assertNull(p.price(), "sahte fiyat üretilmemeli");
         assertNull(p.score());
         assertEquals(1, plan.warnings().size());
@@ -181,7 +192,7 @@ class AllocationPlannerTest {
         CandidateInput above = new CandidateInput("GARAN", 10.0, 0.80, Labeler.BUY, false);
 
         Plan plan = AllocationPlanner.plan(List.of(), List.of(below, above),
-                MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
         assertEquals(1, plan.buys().size());
         assertEquals("GARAN", plan.buys().get(0).symbol());
@@ -200,9 +211,9 @@ class AllocationPlannerTest {
         HoldingInput holding = new HoldingInput("THYAO", 100, 240.0, 228.0, Labeler.SELL, 0.20);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
-                MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
-        assertEquals("TUT", plan.holdings().get(0).action());
+        assertEquals(Signal.TUT, plan.holdings().get(0).action());
     }
 
     /**
@@ -217,8 +228,8 @@ class AllocationPlannerTest {
         HoldingInput holding = new HoldingInput("THYAO", 100, 240.0, 230.0, Labeler.SELL, 0.50);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
-                MODE, ModelType.RANDOM_FOREST, 50_000, 5);
+                MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
 
-        assertEquals("SAT", plan.holdings().get(0).action());
+        assertEquals(Signal.SAT, plan.holdings().get(0).action());
     }
 }

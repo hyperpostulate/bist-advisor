@@ -1,10 +1,11 @@
-package org.mesutormanli.bistadvisor.data;
+package org.mesutormanli.bistadvisor.adapters.cache;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mesutormanli.bistadvisor.config.AppConfig;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.mesutormanli.bistadvisor.domain.market.Bar;
+import org.mesutormanli.bistadvisor.domain.market.MarketTime;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
@@ -12,7 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link CacheStore} fiyat önbelleği sözlüğünün testleri: dosya varlığının
+ * {@link CsvPriceCache} fiyat önbelleği sözlüğünün testleri: dosya varlığının
  * sembol başına tazelik kararıyla sonuçlanması, bozuk içeriğin bayat sayılması
  * ve yazma-okama turunun satırları birebir koruması.
  * <p>
@@ -21,26 +22,18 @@ import static org.junit.jupiter.api.Assertions.*;
  * Her test {@code @TempDir} altında kendi önbellek dizinini kullanır; diske ve
  * zamana bağlı tek unsur bugünün tarihidir.
  */
-class CacheStoreTest {
+class CsvPriceCacheTest {
 
     @TempDir
     Path dir;
 
     /**
-     * Geçici dizin altında boş bir {@link CacheStore} kurar.
-     * <p>
-     * {@code @TempDir} ile sağlanan dizin altında {@code cache} ve
-     * {@code state.yaml} yolları belirlenir; {@link AppConfig} alanları
-     * {@code ReflectionTestUtils} ile doldurularak gerçek proje dizinlerine
-     * dokunulmadan disk erişimi sağlanır.
+     * Geçici dizin altında boş bir {@link CsvPriceCache} kurar.
      *
-     * @return geçici dizine bağlı, içi boş yeni bir {@link CacheStore}
+     * @return geçici dizine bağlı, içi boş yeni bir {@link CsvPriceCache}
      */
-    private CacheStore newStore() {
-        AppConfig cfg = new AppConfig();
-        ReflectionTestUtils.setField(cfg, "cacheDir", dir.resolve("cache").toString());
-        ReflectionTestUtils.setField(cfg, "stateFile", dir.resolve("state.yaml").toString());
-        return new CacheStore(cfg);
+    private CsvPriceCache newStore() {
+        return new CsvPriceCache(dir.resolve("cache"));
     }
 
     /**
@@ -63,9 +56,9 @@ class CacheStoreTest {
      */
     @Test
     void sonBarToleransPenceresindeyseTazedir() {
-        CacheStore store = newStore();
+        CsvPriceCache store = newStore();
         LocalDate recent = MarketTime.today().minusDays(2);
-        store.writeLines("THYAO", List.of(recent + ",240.0,1000"));
+        store.write("THYAO", List.of(new Bar(recent.toString(), 240.0, 1000)));
 
         assertTrue(store.hasFresh("THYAO"));
     }
@@ -78,8 +71,9 @@ class CacheStoreTest {
      */
     @Test
     void eskiBarBayatSayilir() {
-        CacheStore store = newStore();
-        store.writeLines("THYAO", List.of(MarketTime.today().minusDays(10) + ",240.0,1000"));
+        CsvPriceCache store = newStore();
+        store.write("THYAO",
+                List.of(new Bar(MarketTime.today().minusDays(10).toString(), 240.0, 1000)));
 
         assertFalse(store.hasFresh("THYAO"));
     }
@@ -90,28 +84,36 @@ class CacheStoreTest {
      * Senaryo: dosyaya tarih alanı içermeyen tek bozuk satır yazılır. Beklenen
      * davranış: {@code DateTimeParseException} sessizce yutulur ve bozuk dosya
      * bayat kabul edilerek {@code hasFresh} false döner.
+     *
+     * @throws Exception önbellek dosyası yazılamazsa
      */
     @Test
-    void bozukDosyaBayatSayilir() {
-        CacheStore store = newStore();
-        store.writeLines("THYAO", List.of("bozuk-veri"));
+    void bozukDosyaBayatSayilir() throws Exception {
+        newStore();
+        Files.writeString(dir.resolve("cache").resolve("price_THYAO.csv"), "bozuk-veri");
 
-        assertFalse(store.hasFresh("THYAO"));
+        assertFalse(newStore().hasFresh("THYAO"));
     }
 
     /**
      * Yazma-okama turunun satırları birebir koruması.
      * <p>
-     * Senaryo: THYAO sembolüne iki CSV satırı yazılır. Beklenen davranış:
-     * {@code readLines} aynı iki satırı yazımla birebir aynı içerik ve sırayla
-     * döndürür; biçim veya kayan nokta dönüşümü uygulanmaz.
+     * Senaryo: THYAO sembolüne iki bar yazılır. Beklenen davranış: dosya satırları
+     * {@code tarih,kapanış,hacim} biçiminde yazımla birebir aynı üretir; okuma da
+     * aynı iki barı orijinal değerleriyle geri verir (kayan nokta dönüşümü
+     * uygulanmaz).
+     *
+     * @throws Exception önbellek dosyası okunamazsa
      */
     @Test
-    void yazmaOkumaYuvarlanir() {
-        CacheStore store = newStore();
-        store.writeLines("THYAO", List.of("2026-01-01,240.0,1000", "2026-01-02,241.0,900"));
+    void yazmaOkumaYuvarlanir() throws Exception {
+        CsvPriceCache store = newStore();
+        store.write("THYAO", List.of(new Bar("2026-01-01", 240.0, 1000),
+                new Bar("2026-01-02", 241.0, 900)));
 
         assertEquals(List.of("2026-01-01,240.0,1000", "2026-01-02,241.0,900"),
-                store.readLines("THYAO"));
+                Files.readAllLines(dir.resolve("cache").resolve("price_THYAO.csv")));
+        assertEquals(List.of(new Bar("2026-01-01", 240, 1000),
+                new Bar("2026-01-02", 241, 900)), store.read("THYAO"));
     }
 }
