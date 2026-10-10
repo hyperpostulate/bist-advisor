@@ -12,5 +12,5 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param status  sonuç durumu
  * @param message detay/uyarı metni ({@code ok} durumunda {@code null})
  */
-@JsonInclude(JsonInclude.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record SavePortfolioResponse(String status, String message) {}

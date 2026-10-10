@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Uygulamanın {@code @SpringBootApplication} giriş noktası ve iki çalışma modunun seçicisi.
@@ -17,6 +18,8 @@ import java.util.Map;
  * (komut satırı) modu. Ayrımın kendisi {@link CliMode}'da, komut dağıtımı ise
  * {@link CommandLineRunner} olarak {@code CliCommandRunner} içindedir; CLI çağrımında
  * web katmanı hiç kurulmaz ({@code WebApplicationType.NONE}, servlet yok).
+ * Bilinmeyen komutta süreçten çıkma kararı ({@code System.exit(1)}) YALNIZCA bu
+ * giriş noktasında verilir.
  * <p>
  * Ayrıca Spring Shell'in komut satırını ele geçirmesi, boş bir
  * {@code ApplicationRunner} bean'i ile engellenir.
@@ -33,10 +36,10 @@ public class BistAdvisorApplication {
      * {@code spring.shell.interactive.enabled=false} varsayılan özelliği atanır.
      * CLI çağrımında {@code WebApplicationType.NONE} ile servlet kurulmaz ve {@code --cli}
      * imleyicisi argümanlardan düşürülür; aksi halde bilinmeyen komut kontrolü yapılarak
-     * normal (web) başlatma yapılır.
+     * normal (web) başlatma yapılır. Bilinmeyen komut varsa hata stderr'e yazılır ve
+     * çıkış kodu 1 ile çıkılır.
      *
      * @param args komut satırı argümanları
-     * @throws IllegalStateException Spring bağlamı başlatılamazsa
      */
     public static void main(String[] args) {
         SpringApplication app = new SpringApplication(BistAdvisorApplication.class);
@@ -45,7 +48,11 @@ public class BistAdvisorApplication {
             app.setWebApplicationType(WebApplicationType.NONE);
             app.run(CliMode.stripCliMarker(args));
         } else {
-            CliMode.checkUnknownCommand(args);
+            Optional<String> error = CliMode.unknownCommandError(args);
+            if (error.isPresent()) {
+                System.err.println(error.get());
+                System.exit(1);
+            }
             app.run(args);
         }
     }

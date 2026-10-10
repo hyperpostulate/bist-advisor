@@ -1,5 +1,6 @@
 package org.mesutormanli.bistadvisor.config;
 
+import org.mesutormanli.bistadvisor.domain.settings.ModelType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 

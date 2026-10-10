@@ -2,6 +2,7 @@ package org.mesutormanli.bistadvisor.cli;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Komut satırı çağrımının CLI mı yoksa web modu mu olduğunu ayırt eden yardımcılar.
@@ -9,8 +10,8 @@ import java.util.List;
  * Bilinen komutlar {@code init}, {@code run}, {@code confirm}, {@code status} ve
  * {@code train}; CLI modunu tetikleyen imleyici ise {@code --cli}. Seçenek argümanlar
  * ({@code -} ile başlayanlar) atlandığı için Spring argümanları web modunu bozmaz.
- *
- * @see BistAdvisorApplication
+ * Bu sınıf hiçbir zaman süreçten çıkmaz ({@code System.exit} çağırmaz); bilinmeyen
+ * komut hatasını metin olarak üretir, çıkış kararını çağıran verir.
  */
 public final class CliMode {
 
@@ -54,17 +55,19 @@ public final class CliMode {
     }
 
     /**
-     * İlk argümanın bilinmeyen bir komut olmadığını kontrol eder.
+     * İlk argümanın bilinmeyen bir komut olup olmadığını denetler ve hata metnini üretir.
      * <p>
-     * İlk argüman {@code -} ile başlamıyorsa ve bilinen komutlar arasında değilse hata
-     * metni standart hata akışına (stderr) yazılır ve {@code System.exit(1)} ile çıkılır.
+     * İlk argüman {@code -} ile başlamıyorsa ve bilinen komutlar arasında değilse
+     * {@code "Bilinmeyen komut: ..."} biçiminde hata metni döner; çağıran bu metni
+     * stderr'e yazıp süreçten çıkabilir.
      *
      * @param args komut satırı argümanları
+     * @return bilinmeyen komut hatası; geçerli çağrım ise {@link Optional#empty()}
      */
-    public static void checkUnknownCommand(String[] args) {
+    public static Optional<String> unknownCommandError(String[] args) {
         if (args.length > 0 && !args[0].startsWith("-") && !COMMANDS.contains(args[0].toLowerCase())) {
-            System.err.println("Bilinmeyen komut: " + args[0] + " (komutlar: " + COMMANDS + ")");
-            System.exit(1);
+            return Optional.of("Bilinmeyen komut: " + args[0] + " (komutlar: " + COMMANDS + ")");
         }
+        return Optional.empty();
     }
 }

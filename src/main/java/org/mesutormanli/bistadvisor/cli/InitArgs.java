@@ -1,6 +1,6 @@
 package org.mesutormanli.bistadvisor.cli;
 
-import org.mesutormanli.bistadvisor.portfolio.Position;
+import org.mesutormanli.bistadvisor.domain.portfolio.Position;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +19,7 @@ import java.util.List;
  * @param analysis analiz tipi (geçerliyse; yoksa {@code null})
  * @param positions pozisyon listesi
  * @param errors   ayrıştırma hataları (her hata tek satır)
- * @see AdvisorCommands#init
+ * @see InitCommand
  */
 public record InitArgs(
         double budget,
@@ -32,7 +32,7 @@ public record InitArgs(
     /**
      * {@code init} komutundan sonraki argümanları ayrıştırır.
      *
-     * @param args {@code init} komutundan sonraki argümanlar
+     * @param args {@code init} komutu ve argümanları (dizinin 0. elemanı atlanır)
      * @return ayrıştırılmış argümanlar ve toplanan hatalar
      */
     public static InitArgs parse(String[] args) {
