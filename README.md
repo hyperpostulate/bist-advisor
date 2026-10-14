@@ -832,20 +832,26 @@ org.mesutormanli.bistadvisor
 
 ### Budget & Cash Model
 
-The `budget` field is the **total capital** (cash + positions' cost basis). Available cash is derived automatically:
+The `budget` field is the **total capital contributed** (the money the user put in), while the `cash` field is **open cash**. Buy/sell transactions change cash directly:
 
 ```
-cash = budget − Σ (lots × average cost)
+buy:  cash −= lots × buy price
+sell: cash += lots × sell price
+total value (equity) = cash + Σ (lots × current price)
 ```
 
-Buy/sell transactions never change total capital; they only redistribute it between cash and cost basis. Partial sells are supported: the position shrinks by the sold lots while the average cost is preserved.
+In this model **realized P/L flows into cash**: buying at 240 TL and selling at 250 TL adds 1,000 TL of profit to available cash; a loss-making sell reduces cash. Partial sells are supported: the position shrinks by the sold lots while the average cost is preserved.
+
+Manual portfolio updates (adding/removing positions from the UI) shift cash by the cost difference; removing a position returns its cost basis to cash as if sold — use transaction confirmation for realized P/L. Changing the budget field counts as a deposit/withdrawal; setting it to `0` withdraws all contributed capital (budget and cash are tracked independently).
+
+The `cash` field is always present in `state.yaml`; field values are preserved verbatim when loading, with no derivation or transformation.
 
 ### Dependencies
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | Spring Boot Web | 4.0.0 | REST/MVC framework |
-| Spring Shell | 4.0.2 | CLI command interface |
+| Spring Shell | 4.0.2 | Present as a dependency; shell runner disabled (CLI entry runs via `CommandLineRunner`) |
 | SMILE Core | 6.2.3 | ML algorithms (RF/SVM/KNN) |
 | Jackson YAML | - | state.yaml persistence |
 | Spring Boot Test | - | Test framework |

@@ -177,7 +177,8 @@ const I18N = {
     removed: " silindi",
     analyzing: "Analiz yapılıyor...",
     lastAnalysis: "Son analiz: ",
-    analyzeError: "Analiz sırasında hata oluştu."
+    analyzeError: "Analiz sırasında hata oluştu.",
+    invalidBudget: "Geçerli bir bütçe girin."
   },
   en: {
     appTitle: "BIST Portfolio Advisor",
@@ -246,7 +247,8 @@ const I18N = {
     removed: " removed",
     analyzing: "Analyzing...",
     lastAnalysis: "Last analysis: ",
-    analyzeError: "Analysis failed."
+    analyzeError: "Analysis failed.",
+    invalidBudget: "Enter a valid budget."
   }
 };
 
@@ -302,7 +304,8 @@ async function addPosition() {
     existing.avgCost = (existing.avgCost * existing.lots + cost * lots) / totalLots;
     existing.lots = totalLots;
   } else {
-    if (st.positions.length >= 5) { alert(t('maxPositions')); return; }
+    const max = window._maxPositions || 5;
+    if (st.positions.length >= max) { alert(t('maxPositions')); return; }
     st.positions.push({symbol: sym, lots, avgCost: cost});
   }
   st.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
@@ -331,6 +334,10 @@ async function analyze() {
   status.textContent = t('analyzing');
   try {
     const res = await post('/api/analyze', {});
+    if (res && res.status === 'error') {
+      status.textContent = res.message || t('analyzeError');
+      return;
+    }
     window._lastAnalysis = res;
     render(res);
     renderConfirm(res);
@@ -375,7 +382,7 @@ function render(r) {
   if (r.warnings && r.warnings.length) {
     h += '<p class="small" style="color:#fbc531">⚠ ' + r.warnings.join('<br>') + '</p>';
   }
-  r.holdings.sort((a, b) => a.symbol.localeCompare(b.symbol));
+  r.holdings.sort((a, b) => (a.action === 'SAT' ? 0 : 1) - (b.action === 'SAT' ? 0 : 1) || a.index - b.index);
   h += '<h3 style="color:#9aa;font-size:13px">' + t('holdingsTitle') + '</h3><table><tr><th>' + t('colNo') + '</th><th>' + t('colSymbol') + '</th><th>' + t('colAction') + '</th><th>' + t('colLots') + '</th><th>' + t('colPrice') + '</th><th>' + t('colNote') + '</th></tr>';
   for (const x of r.holdings) h += row(x);
   h += '</table>';
@@ -431,7 +438,7 @@ function pnlPctCell(v){
 
 async function saveBudget() {
   const b = +document.getElementById('budget').value;
-  if (!(b >= 0)) { alert('Geçerli bir bütçe girin.'); return; }
+  if (!(b >= 0)) { alert(t('invalidBudget')); return; }
   const st = await getState();
   st.budget = b;
   await post('/api/portfolio', st);
@@ -441,8 +448,10 @@ async function saveBudget() {
 function renderPortfolio(v) {
   const bInput = document.getElementById('budget');
   if (bInput && (bInput.value === '' || bInput.value == null)) bInput.value = v.budget;
+  const maxPositions = v.maxPositions || 5;
+  window._maxPositions = maxPositions;
   v.positions.sort((a, b) => a.symbol.localeCompare(b.symbol));
-  let h = '<p class="small">' + t('capital') + ': ' + fmt(v.budget) + ' TL | ' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/' + 5 + '</p>';
+  let h = '<p class="small">' + t('capital') + ': ' + fmt(v.budget) + ' TL | ' + t('availableCash') + ': ' + fmt(v.availableCash) + ' TL | ' + t('position') + ': ' + v.positions.length + '/' + maxPositions + '</p>';
   h += '<p class="small">' + t('equity') + ': ' + fmt(v.equity) + ' TL</p>';
   if (v.missingPrices && v.missingPrices.length) {
     h += '<p class="small" style="color:#fbc531">⚠ ' + t('missingPrices') + ': ' + v.missingPrices.join(', ') + '</p>';

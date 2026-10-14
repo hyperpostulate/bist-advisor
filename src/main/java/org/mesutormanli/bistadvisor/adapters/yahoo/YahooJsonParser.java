@@ -62,7 +62,9 @@ public final class YahooJsonParser {
      * <p>
      * F/K için {@code trailingPE}, ≤ 0 ise {@code forwardPE}; kâr büyümesi için
      * {@code earningsGrowth}, 0 ise {@code revenueGrowth} okunur. PD/DD, temettü verimi ve
-     * özkaynak kârlılığı (ROE) ilgili modüllerin {@code raw} alanlarından alınır.
+     * özkaynak kârlılığı (ROE) ilgili modüllerin {@code raw} alanlarından alınır. Tüm
+     * alanlar 0'a düşerse (Yahoo şeması değişmiş olabilir) {@code WARN} seviyesinde
+     * günlüğe yazılır; böylece sessiz bozulma fark edilir.
      *
      * @param json v10 quoteSummary yanıt gövdesi
      * @return temel göstergeler; ayrıştırma hatasında {@link Fundamentals#EMPTY}
@@ -77,7 +79,13 @@ public final class YahooJsonParser {
             double roe = node(r, "financialData", "returnOnEquity");
             double pg = node(r, "financialData", "earningsGrowth");
             if (pg == 0) pg = node(r, "financialData", "revenueGrowth");
-            return new Fundamentals(fk, pdDd, dy, pg, roe);
+            Fundamentals f = new Fundamentals(fk, pdDd, dy, pg, roe);
+            if (f.equals(Fundamentals.EMPTY)) {
+                log.warn("Temel gostergelerin tamami okunamadi (tumu 0); Yahoo semasi "
+                        + "degismis ya da beklenen alanlar (trailingPE/priceToBook/dividendYield/"
+                        + "earningsGrowth/returnOnEquity) kaldirilmis olabilir");
+            }
+            return f;
         } catch (Exception e) {
             log.warn("temel JSON parse hatasi: {}", e.getMessage());
             return Fundamentals.EMPTY;

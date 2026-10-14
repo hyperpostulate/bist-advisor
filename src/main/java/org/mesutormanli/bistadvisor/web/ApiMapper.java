@@ -67,7 +67,7 @@ public final class ApiMapper {
                 .toList();
         return new PortfolioViewDto(view.budget(), view.advisorMode(), view.modelType(),
                 view.analysisType(), rows, view.availableCash(), view.totalInvested(),
-                view.totalCurrent(), view.equity(), view.missingPrices());
+                view.totalCurrent(), view.equity(), view.missingPrices(), view.maxPositions());
     }
 
     /**

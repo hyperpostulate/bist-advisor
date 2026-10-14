@@ -134,6 +134,7 @@ public final class AllocationPlanner {
             if (sellSymbols.contains(c.symbol())) continue;
             if (c.predClass() == null || c.predClass() != Labeler.BUY) continue;
             if (c.score() == null || !gate.passes(c.score(), mode.buyThreshold)) continue;
+            if (!(c.price() > 0) || !Double.isFinite(c.price())) continue;
             eligible.add(c);
         }
 
@@ -157,6 +158,7 @@ public final class AllocationPlanner {
         List<Planned> buys = new ArrayList<>();
         if (totalScore > 0) {
             for (CandidateInput c : chosen) {
+                if (!(c.price() > 0) || !Double.isFinite(c.price())) continue;
                 double alloc = totalBudget * (c.score() / totalScore);
                 int lots = (int) Math.floor(alloc / c.price());
                 if (lots > 0) {

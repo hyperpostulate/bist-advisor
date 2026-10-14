@@ -15,6 +15,7 @@ import org.mesutormanli.bistadvisor.domain.portfolio.ValidationResult;
 import org.mesutormanli.bistadvisor.domain.settings.AnalysisType;
 import org.mesutormanli.bistadvisor.domain.settings.ModelType;
 import org.mesutormanli.bistadvisor.web.dto.AnalysisResponse;
+import org.mesutormanli.bistadvisor.web.dto.ApiError;
 import org.mesutormanli.bistadvisor.web.dto.ConfigDto;
 import org.mesutormanli.bistadvisor.web.dto.ConfirmResponse;
 import org.mesutormanli.bistadvisor.web.dto.PortfolioDraft;
@@ -22,6 +23,9 @@ import org.mesutormanli.bistadvisor.web.dto.PortfolioViewDto;
 import org.mesutormanli.bistadvisor.web.dto.RecommendationDto;
 import org.mesutormanli.bistadvisor.web.dto.SavePortfolioResponse;
 import org.mesutormanli.bistadvisor.web.dto.TransactionDto;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -196,5 +200,27 @@ public class AdvisorController {
             if (r.action() == Signal.AL) out.add(ApiMapper.toDto(r));
         }
         return out;
+    }
+
+    /**
+     * Analiz/eğitim hattında oluşan {@link IllegalStateException}'ı anlaşılır bir
+     * API hatasına çevirir.
+     * <p>
+     * Tipik neden endeks için canlı eğitim verisinin üretilememesidir (model
+     * eğitilemezse). Böyle durumlarda ham 500 gövdesi yerine arayüzün
+     * {@code status}/{@code message} sözleşmesine uyan bir gövde döner; böylece
+     * kullanıcı "Analiz sırasında hata oluştu." genel mesajı yerine gerçek nedeni
+     * görür.
+     *
+     * @param ex yakalanan istisna
+     * @return 422 (Unprocessable Entity) ve {@code {"status":"error","message":...}} gövdesi
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex) {
+        String message = ex.getMessage() != null && !ex.getMessage().isBlank()
+                ? ex.getMessage()
+                : "Analiz baslatilamadi";
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("error", message));
     }
 }

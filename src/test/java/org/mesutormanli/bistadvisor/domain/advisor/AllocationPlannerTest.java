@@ -232,4 +232,21 @@ class AllocationPlannerTest {
 
         assertEquals(Signal.SAT, plan.holdings().get(0).action());
     }
+
+    /**
+     * Fiyatı sıfır/geçersiz adayın alım planına girmemesi (tamsayı taşması önlemi).
+     * <p>
+     * Senaryo: veri hatasıyla fiyatı {@code 0.0} gelen AKBNK 0,90 skorla BUY
+     * adayıdır. Beklenen davranış: sıfıra bölme {@code Infinity} üretip
+     * {@code Integer.MAX_VALUE} lot önerilmez; aday elenir ve AL listesi boş kalır.
+     */
+    @Test
+    void sifirFiyatliAdayTamsayiTasmasinaYolAcmaz() {
+        CandidateInput zeroPrice = new CandidateInput("AKBNK", 0.0, 0.90, Labeler.BUY, false);
+
+        Plan plan = AllocationPlanner.plan(List.of(), List.of(zeroPrice),
+                MODE, gate(ModelType.RANDOM_FOREST), 50_000, 5);
+
+        assertTrue(plan.buys().isEmpty(), "sıfır fiyatlı aday alım üretmemeli: " + plan.buys());
+    }
 }

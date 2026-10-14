@@ -15,8 +15,9 @@ import java.util.List;
  * @param totalCurrent  toplam güncel değer (TL; fiyatı bilinmeyenler 0 sayılır)
  * @param equity        toplam varlık (nakit + güncel değer, TL)
  * @param missingPrices güncel fiyatı alınamayan semboller
+ * @param maxPositions  izin verilen maksimum pozisyon sayısı
  */
 public record PortfolioView(double budget, String advisorMode, String modelType, String analysisType,
                             List<PositionView> positions, double availableCash,
                             double totalInvested, double totalCurrent, double equity,
-                            List<String> missingPrices) {}
+                            List<String> missingPrices, int maxPositions) {}

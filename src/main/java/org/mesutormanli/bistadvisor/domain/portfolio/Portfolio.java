@@ -150,15 +150,18 @@ public final class Portfolio {
      * Portföyü kısmi olarak günceller.
      * <p>
      * Bütçe farkı nakde eklenir/çıkarılır (mutlak fark toleransın altındaysa nakde
-     * dokunulmaz; sıfır/negatif bütçe verilmez sayılır). Yeni pozisyon listesi
-     * verilirse eski yatırılan maliyet ile yenisi arasındaki fark nakde işlenir:
-     * pozisyon eklemek nakdi maliyeti kadar azaltır, çıkarmak artırır.
+     * dokunulmaz). {@code 0} geçerli bir bütçedir ve sermayenin tamamen çekilmesini
+     * (nakit korunarak bütçenin sıfırlanmasını) temsil eder; negatif bütçe yok
+     * sayılır. Yeni pozisyon listesi verilirse eski yatırılan maliyet ile yenisi
+     * arasındaki fark nakde işlenir: pozisyon eklemek nakdi maliyeti kadar azaltır,
+     * çıkarmak artırır.
      *
-     * @param newBudget yeni bütçe (TL; 0/negatif = korunur)
+     * @param newBudget yeni bütçe (TL; {@code >= 0} uygulanır, {@code 0} = tam çekiliş,
+     *                  negatif = korunur)
      * @param newPos    yeni pozisyon listesi ({@code null} = korunur)
      */
     public synchronized void adjust(double newBudget, List<Position> newPos) {
-        if (newBudget > 0 && Math.abs(newBudget - budget) > PortfolioPolicy.TOLERANCE) {
+        if (newBudget >= 0 && Math.abs(newBudget - budget) > PortfolioPolicy.TOLERANCE) {
             cash += newBudget - budget;
             budget = newBudget;
         }

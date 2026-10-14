@@ -164,12 +164,18 @@ public class AnalysisService {
 
     /**
      * Bar serisinin son kapanış fiyatını (güncel fiyat) döndürür.
+     * <p>
+     * Son kapanış sonlu ve pozitif değilse (veri hatasıyla {@code 0.0} veya
+     * {@code NaN} gelirse) fiyat bilinmiyor sayılır ve {@code null} döner; böylece
+     * sıfır fiyatlı bir aday alım planına girip tamsayı taşmasına yol açamaz.
      *
      * @param series kapanış fiyatları içeren bar serisi
-     * @return serinin son kapanışı; seri boşsa fiyat bilinmediğinden {@code null}
+     * @return serinin son kapanışı; seri boşsa veya fiyat geçersizse {@code null}
      */
     private Double currentPrice(List<Bar> series) {
-        return series.isEmpty() ? null : series.getLast().close();
+        if (series.isEmpty()) return null;
+        double close = series.getLast().close();
+        return (Double.isFinite(close) && close > 0) ? close : null;
     }
 
     /**

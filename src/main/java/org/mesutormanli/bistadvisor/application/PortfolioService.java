@@ -218,11 +218,12 @@ public class PortfolioService {
      * Portföyü kısmi olarak günceller ve yeni durumu kaydeder.
      * <p>
      * Bütçe farkı nakde eklenir/çıkarılır (mutlak fark 0.01 TL toleransın
-     * altındaysa nakde dokunulmaz). Yeni pozisyon listesi verilirse eski yatırılan
+     * altındaysa nakde dokunulmaz). {@code 0} geçerli bir bütçedir (tam çekiliş);
+     * negatif bütçe yok sayılır. Yeni pozisyon listesi verilirse eski yatırılan
      * maliyet ile yenisi arasındaki fark nakde işlenir. Parametrelerin null
      * olanları korunur.
      *
-     * @param budget   yeni bütçe (TL; 0/negatif = korunur)
+     * @param budget   yeni bütçe (TL; negatif = korunur)
      * @param risk     risk profili adı/etiketi (null ise korunur)
      * @param model    model anahtarı (null ise korunur)
      * @param analysis analiz tipi anahtarı (null ise korunur)

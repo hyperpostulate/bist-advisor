@@ -64,6 +64,6 @@ public class PortfolioViewService {
         double cash = portfolioService.availableCash();
         return new PortfolioView(state.budget, state.advisorMode, state.modelType, state.analysisType,
                 List.copyOf(rows), cash, totalInvested, totalCurrent, cash + totalCurrent,
-                List.copyOf(missingPrices));
+                List.copyOf(missingPrices), portfolioService.maxPositions());
     }
 }

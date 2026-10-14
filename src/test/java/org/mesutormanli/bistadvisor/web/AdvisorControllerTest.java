@@ -274,4 +274,22 @@ class AdvisorControllerTest {
 
         assertEquals(2, com.jayway.jsonpath.JsonPath.parse(body).read("$", List.class).size());
     }
+
+    /**
+     * Analiz hattındaki {@link IllegalStateException}'ın anlaşılır hata gövdesine çevrilmesi.
+     * <p>
+     * Senaryo: model eğitilemediği için servis {@code IllegalStateException} fırlatır.
+     * Beklenen davranış: ham 500 yerine 422 döner ve gövdede
+     * {@code {"status":"error","message":...}} bulunur; mesaj arayüzde gösterilebilir.
+     */
+    @Test
+    void analizHatasindaAnlasilirHataGovdesiDoner() throws Exception {
+        when(analysisService.analyze())
+                .thenThrow(new IllegalStateException("canli egitim verisi uretilemedi (endeks: BIST_30)"));
+
+        mockMvc.perform(post("/api/analyze"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value("error"))
+                .andExpect(jsonPath("$.message").value("canli egitim verisi uretilemedi (endeks: BIST_30)"));
+    }
 }

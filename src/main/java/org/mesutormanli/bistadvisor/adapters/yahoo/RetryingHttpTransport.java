@@ -62,8 +62,9 @@ public class RetryingHttpTransport {
      * <p>
      * 200 yanıtı olduğu gibi döner. 401 yanıtı çağıran katmanın oturumu yenilemesi için
      * olduğu gibi döndürülür. 429 ve 5xx yanıtlarında 500 ms ile başlayan ve her denemede
-     * ikiye katlanan üstel geri çekilme uygulanır; diğer durum kodları aynen döndürülür.
-     * Denemeler tükenirse {@code null} döner.
+     * ikiye katlanan üstel geri çekilme uygulanır; geri çekilme yalnızca başka bir deneme
+     * kaldıysa beklenir (son denemeden sonra boşuna uyunmaz), diğer durum kodları aynen
+     * döndürülür. Denemeler tükenirse {@code null} döner.
      *
      * @param url    istek URL'si
      * @param cookie isteğe eklenecek çerez dizesi ({@code null} = çerez eklenmez)
@@ -82,8 +83,10 @@ public class RetryingHttpTransport {
             int code = res.statusCode();
             if (code == 200 || code == 401) return res;
             if (code == 429 || code >= 500) {
-                Thread.sleep(backoff);
-                backoff *= 2;
+                if (attempt < MAX_RETRIES - 1) {
+                    Thread.sleep(backoff);
+                    backoff *= 2;
+                }
                 continue;
             }
             return res;

@@ -212,6 +212,26 @@ class PortfolioServiceTest {
     }
 
     /**
+     * Bütçenin sıfıra indirilebilmesi (tam çekiliş).
+     * <p>
+     * Senaryo: 100.000 TL bütçeli boş portföyde bütçe {@code 0} yapılır. Beklenen
+     * davranış: bütçe farkı nakde işlenir; nakit ve bütçe 0 olur. Böylece kullanıcı
+     * sermayesini tamamen çekebilir; {@code 0} artık "yok say" değil geçerli bir
+     * değerdir.
+     */
+    @Test
+    void updateButceyiSifiraIndirebilir() {
+        PortfolioService svc = newService();
+        svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
+
+        svc.update(0, null, null, null, null, null);
+
+        assertEquals(0, svc.availableCash(), 0.01);
+        assertEquals(0, svc.snapshot().budget, 0.01);
+        assertTrue(svc.validate().ok());
+    }
+
+    /**
      * Pozisyon değişikliğinin maliyet farkı kadar nakde işlenmesi.
      * <p>
      * Senaryo: boş portföye 10 lot THYAO 240 TL'lik pozisyon eklenir, ardından
@@ -224,10 +244,10 @@ class PortfolioServiceTest {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
-        svc.update(0, null, null, null, null, List.of(new Position("THYAO", 10, 240)));
+        svc.update(100_000, null, null, null, null, List.of(new Position("THYAO", 10, 240)));
         assertEquals(97_600, svc.availableCash(), 0.01);
 
-        svc.update(0, null, null, null, null, List.of());
+        svc.update(100_000, null, null, null, null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
     }
 
@@ -292,10 +312,10 @@ class PortfolioServiceTest {
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, svc.analysisType());
 
-        svc.update(0, null, null, "YALNIZCA_TEMEL", null, null);
+        svc.update(100_000, null, null, "YALNIZCA_TEMEL", null, null);
         assertEquals(AnalysisType.FUNDAMENTAL, svc.analysisType());
 
-        svc.update(0, null, null, null, null, null);
+        svc.update(100_000, null, null, null, null, null);
         assertEquals(AnalysisType.FUNDAMENTAL, svc.analysisType());
     }
 

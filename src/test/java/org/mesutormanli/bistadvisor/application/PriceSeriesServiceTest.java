@@ -27,6 +27,7 @@ class PriceSeriesServiceTest {
         List<Bar> data = List.of();
         String writtenSymbol;
         List<Bar> written;
+        int reads;
 
         @Override
         public boolean hasFresh(String symbol) {
@@ -34,7 +35,13 @@ class PriceSeriesServiceTest {
         }
 
         @Override
+        public boolean isFresh(List<Bar> bars) {
+            return fresh;
+        }
+
+        @Override
         public List<Bar> read(String symbol) {
+            reads++;
             return data;
         }
 
@@ -80,6 +87,7 @@ class PriceSeriesServiceTest {
         List<Bar> bars = new PriceSeriesService(cache, source).load("THYAO");
 
         assertEquals(0, source.calls);
+        assertEquals(1, cache.reads, "önbellek tek okunmalı (çift okuma yok)");
         assertEquals(cached, bars);
     }
 
@@ -101,6 +109,7 @@ class PriceSeriesServiceTest {
         List<Bar> bars = new PriceSeriesService(cache, source).load("THYAO");
 
         assertEquals(1, source.calls);
+        assertEquals(1, cache.reads, "önbellek tek okunmalı (çift okuma yok)");
         assertEquals("THYAO", cache.writtenSymbol);
         assertEquals(fetched, cache.written);
         assertEquals(fetched, bars);
