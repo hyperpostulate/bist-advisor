@@ -43,7 +43,7 @@ class CsvPriceCacheTest {
      * davranış: fiyat dosyası bulunamadığı için {@code hasFresh} false döner.
      */
     @Test
-    void dosyasiOlmayanSembolBayatSayilir() {
+    void symbolWithoutFileConsideredStale() {
         assertFalse(newStore().hasFresh("YOK"));
     }
 
@@ -55,7 +55,7 @@ class CsvPriceCacheTest {
      * için {@code hasFresh} true döner.
      */
     @Test
-    void sonBarToleransPenceresindeyseTazedir() {
+    void freshIfLastBarWithinToleranceWindow() {
         CsvPriceCache store = newStore();
         LocalDate recent = MarketTime.today().minusDays(2);
         store.write("THYAO", List.of(new Bar(recent.toString(), 240.0, 1000)));
@@ -70,7 +70,7 @@ class CsvPriceCacheTest {
      * bar 4 günlük tolerans penceresini aştığı için {@code hasFresh} false döner.
      */
     @Test
-    void eskiBarBayatSayilir() {
+    void oldBarConsideredStale() {
         CsvPriceCache store = newStore();
         store.write("THYAO",
                 List.of(new Bar(MarketTime.today().minusDays(10).toString(), 240.0, 1000)));
@@ -88,7 +88,7 @@ class CsvPriceCacheTest {
      * @throws Exception önbellek dosyası yazılamazsa
      */
     @Test
-    void bozukDosyaBayatSayilir() throws Exception {
+    void corruptFileConsideredStale() throws Exception {
         newStore();
         Files.writeString(dir.resolve("cache").resolve("price_THYAO.csv"), "bozuk-veri");
 
@@ -106,7 +106,7 @@ class CsvPriceCacheTest {
      * @throws Exception önbellek dosyası okunamazsa
      */
     @Test
-    void yazmaOkumaYuvarlanir() throws Exception {
+    void writeReadRoundTrip() throws Exception {
         CsvPriceCache store = newStore();
         store.write("THYAO", List.of(new Bar("2026-01-01", 240.0, 1000),
                 new Bar("2026-01-02", 241.0, 900)));

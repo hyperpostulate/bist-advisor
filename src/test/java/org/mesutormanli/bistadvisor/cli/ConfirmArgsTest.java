@@ -19,7 +19,7 @@ class ConfirmArgsTest {
      * sembol, işlem (büyük harfle), lot ve fiyat alanları ayrılır, hata yoktur.
      */
     @Test
-    void gecerliGirdiAlanlaraBolunur() {
+    void validInputSplitIntoFields() {
         ConfirmArgs tx = ConfirmArgs.parse("THYAO,AL,100,240.5");
 
         assertTrue(tx.ok());
@@ -37,7 +37,7 @@ class ConfirmArgsTest {
      * işlem alanı büyük harfe çevrilerek {@code SAT} olarak çözümlenir.
      */
     @Test
-    void islemTuruHarftenBagimsizCozulenir() {
+    void actionResolvedCaseInsensitively() {
         ConfirmArgs tx = ConfirmArgs.parse("THYAO,sat,40,250");
 
         assertTrue(tx.ok());
@@ -52,7 +52,7 @@ class ConfirmArgsTest {
      * metnine eşittir.
      */
     @Test
-    void eksikAlanBiçimHatasiUretir() {
+    void missingFieldProducesFormatError() {
         ConfirmArgs tx = ConfirmArgs.parse("THYAO,AL");
 
         assertFalse(tx.ok());
@@ -66,7 +66,7 @@ class ConfirmArgsTest {
      * hata {@code "Gecersiz islem (BEKLE): THYAO,BEKLE,1,2"} metnine eşittir.
      */
     @Test
-    void gecersizIslemHatasiUretir() {
+    void invalidActionProducesError() {
         ConfirmArgs tx = ConfirmArgs.parse("THYAO,BEKLE,1,2");
 
         assertFalse(tx.ok());
@@ -80,7 +80,7 @@ class ConfirmArgsTest {
      * {@code "Gecersiz sayi: THYAO,AL,x,2"} metnine eşittir.
      */
     @Test
-    void gecersizSayiHatasiUretir() {
+    void invalidNumberProducesError() {
         ConfirmArgs tx = ConfirmArgs.parse("THYAO,AL,x,2");
 
         assertFalse(tx.ok());

@@ -39,7 +39,7 @@ class ScoreGateTest {
      * kalır, 0,75 ise 0,80'e yuvarlanır.
      */
     @Test
-    void knnEsikleriOyIzgarasinaYuvarlanir() {
+    void knnThresholdsRoundedToVoteGrid() {
         ScoreGate knn = gate(ModelType.KNN);
         assertEquals(0.4, knn.effectiveThreshold(0.20), DELTA);
         assertEquals(0.4, knn.effectiveThreshold(0.25), DELTA);
@@ -56,7 +56,7 @@ class ScoreGateTest {
      * 0,20 skoru geçemez ({@code false}), 0,40 skoru ise geçer ({@code true}).
      */
     @Test
-    void knnTekKomsuOyuKararUretmez() {
+    void singleKnnVoteProducesNoDecision() {
         ScoreGate knn = gate(ModelType.KNN);
         assertFalse(knn.passes(0.20, 0.20));
         assertTrue(knn.passes(0.40, 0.20));
@@ -70,7 +70,7 @@ class ScoreGateTest {
      * skoru RandomForest'te geçerken 0,29 skoru SVM'de 0,30 tabanını geçemez.
      */
     @Test
-    void digerModellerdeTemelEsikKorunur() {
+    void baseThresholdPreservedForOtherModels() {
         assertEquals(0.60, gate(ModelType.RANDOM_FOREST).effectiveThreshold(0.60), DELTA);
         assertEquals(0.30, gate(ModelType.SVM).effectiveThreshold(0.30), DELTA);
         assertTrue(gate(ModelType.RANDOM_FOREST).passes(0.60, 0.60));

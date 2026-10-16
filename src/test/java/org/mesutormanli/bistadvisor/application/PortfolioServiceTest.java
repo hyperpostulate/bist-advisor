@@ -52,7 +52,7 @@ class PortfolioServiceTest {
      * doğrulama uyarısız geçer.
      */
     @Test
-    void initPortfolioNakdiSermayedenKurar() {
+    void initPortfolioSetsCashFromCapital() {
         PortfolioService svc = newService();
 
         svc.initialize(50_000, "BALANCED", "RANDOM_FOREST", null,
@@ -73,7 +73,7 @@ class PortfolioServiceTest {
      * 100.400 TL olur, bütçe 100.000 TL'de kalır ve doğrulama uyarısız geçer.
      */
     @Test
-    void kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir() {
+    void partialSellShrinksPositionAndRealizedProfitFlowsToCash() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
@@ -101,7 +101,7 @@ class PortfolioServiceTest {
      * olur ve bütçe 100.000 TL'de sabit kalır.
      */
     @Test
-    void tamSatisPozisyonuKaldirirVeKariYansitir() {
+    void fullSellRemovesPositionAndReflectsProfit() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertTrue(svc.apply("THYAO", "AL", 100, 240));
@@ -121,7 +121,7 @@ class PortfolioServiceTest {
      * iner.
      */
     @Test
-    void zararliSatisNakdiAzaltir() {
+    void lossMakingSellReducesCash() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertTrue(svc.apply("THYAO", "AL", 100, 240));
@@ -138,7 +138,7 @@ class PortfolioServiceTest {
      * işlem {@code false} ile reddedilir ve pozisyon 100 lot olarak aynen kalır.
      */
     @Test
-    void fazlaSatisReddedilir() {
+    void excessiveSellRejected() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertTrue(svc.apply("THYAO", "AL", 100, 240));
@@ -159,7 +159,7 @@ class PortfolioServiceTest {
      * kabul edilir, nakit 1.600 TL olarak kalır ve doğrulama uyarısız geçer.
      */
     @Test
-    void nakitUzerindeAlimReddedilir() {
+    void buyBeyondCashRejected() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
@@ -179,7 +179,7 @@ class PortfolioServiceTest {
      * {@code "nakit"} kelimesini içeren bir uyarı döndürür.
      */
     @Test
-    void negatifNakitDogrulamaylaBildirilir() {
+    void negativeCashReportedByValidation() {
         PortfolioService svc = newService();
         svc.initialize(1_000, "BALANCED", "RANDOM_FOREST", null,
                 List.of(new Position("THYAO", 10, 200)));
@@ -199,7 +199,7 @@ class PortfolioServiceTest {
      * yansıtılır; nakit sırayla 110.000 TL ve 105.000 TL olur.
      */
     @Test
-    void updatePortfolioButceDegisikliginiNakdeIsler() {
+    void updatePortfolioAppliesBudgetChangeToCash() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertEquals(100_000, svc.availableCash(), 0.01);
@@ -220,7 +220,7 @@ class PortfolioServiceTest {
      * değerdir.
      */
     @Test
-    void updateButceyiSifiraIndirebilir() {
+    void updateCanReduceBudgetToZero() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
@@ -240,7 +240,7 @@ class PortfolioServiceTest {
      * (+2.400 TL, nakit 100.000 TL).
      */
     @Test
-    void updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler() {
+    void updatePortfolioAppliesPositionDeltaToCashByCost() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
 
@@ -262,7 +262,7 @@ class PortfolioServiceTest {
      * @throws IOException test YAML dosyası yazılamazsa
      */
     @Test
-    void yamlDosyasiAlanlariAynenYuklenir() throws IOException {
+    void yamlFileFieldsLoadedVerbatim() throws IOException {
         Files.writeString(dir.resolve("state.yaml"), """
                 budget: 1000.0
                 cash: 500.0
@@ -287,7 +287,7 @@ class PortfolioServiceTest {
      * değeri diskten geri okur.
      */
     @Test
-    void analizTipiInitIleAyarlanirVeYamlaYazilir() {
+    void analysisTypeSetByInitAndWrittenToYaml() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", "TECHNICAL", List.of());
 
@@ -307,7 +307,7 @@ class PortfolioServiceTest {
      * değer aynen korunur.
      */
     @Test
-    void updatePortfolioAnalizTipiniGunceller() {
+    void updatePortfolioUpdatesAnalysisType() {
         PortfolioService svc = newService();
         svc.initialize(100_000, "BALANCED", "RANDOM_FOREST", null, List.of());
         assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, svc.analysisType());
@@ -330,7 +330,7 @@ class PortfolioServiceTest {
      * @throws IOException test YAML dosyası yazılamazsa
      */
     @Test
-    void analizTipiAlanOlmayanYamldaVarsayilanaDuser() throws IOException {
+    void missingAnalysisTypeFieldInYamlFallsBackToDefault() throws IOException {
         Files.writeString(dir.resolve("state.yaml"), """
                 budget: 1000.0
                 cash: 500.0

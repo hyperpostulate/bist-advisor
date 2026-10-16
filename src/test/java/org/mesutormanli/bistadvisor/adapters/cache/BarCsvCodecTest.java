@@ -24,7 +24,7 @@ class BarCsvCodecTest {
      * {@code "2026-01-02,241.5,900"} olur.
      */
     @Test
-    void encodeBiçimiBirebirUretir() {
+    void encodeProducesExactFormat() {
         assertEquals("2026-01-02,241.5,900",
                 BarCsvCodec.encode(new Bar("2026-01-02", 241.5, 900.7)));
         assertEquals(List.of("2026-01-01,240.0,1000"),
@@ -38,7 +38,7 @@ class BarCsvCodecTest {
      * hacim 3. alandan okunur ve barlar verilen sırayla döner.
      */
     @Test
-    void ucKolonluSatirlarCozumlenir() {
+    void threeColumnRowsParsed() {
         List<Bar> bars = BarCsvCodec.decode(
                 List.of("2026-01-01,240.0,1000", "2026-01-02,241.0,900"));
 
@@ -54,7 +54,7 @@ class BarCsvCodecTest {
      * alandan; 5 kolonda kapanış 5. alandan, hacim 3. alandan (indeks 2) okunur.
      */
     @Test
-    void ohlcvSatirlariDogruKolonlardanCozumlenir() {
+    void ohlcvRowsParsedFromCorrectColumns() {
         List<Bar> bars = BarCsvCodec.decode(List.of(
                 "2026-01-01,239,241,238,240.5,1200",
                 "2026-01-02,239,241,238,241.5"));
@@ -72,7 +72,7 @@ class BarCsvCodecTest {
      * barda döner.
      */
     @Test
-    void bozukSatirlarSessizceAtlanir() {
+    void corruptRowsSilentlySkipped() {
         List<Bar> bars = BarCsvCodec.decode(List.of(
                 "eksik", "", "2026-01-01,metin,1000", "2026-01-02,241.0,900"));
 

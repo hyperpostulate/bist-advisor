@@ -31,7 +31,7 @@ class FeatureVectorTest {
      * 0,6 ve 0,7 ((x*100+50)/100) değerleri üretilir.
      */
     @Test
-    void normalizeDegerleriOlcekler() {
+    void normalizeScalesValues() {
         FeatureVector fv = new FeatureVector(50, 0, 0, 0, 0.02, 1, 25, 5, 2, 0.1, 0.2);
         double[] n = fv.normalize().toArray();
 
@@ -57,7 +57,7 @@ class FeatureVectorTest {
      * kırpılır.
      */
     @Test
-    void normalizeAsiriDegerleriKisar() {
+    void normalizeClampsExtremeValues() {
         FeatureVector fv = new FeatureVector(200, 5, -5, 1, 1, 10, 200, 50, 30, 10, -1);
         double[] n = fv.normalize().toArray();
 
@@ -80,7 +80,7 @@ class FeatureVectorTest {
      * nesnenin RSI değeri {@code [0,1]} aralığındadır.
      */
     @Test
-    void fromBarsHamDegerleriUretirVeNormalizeAyriNesneDoner() {
+    void fromBarsProducesRawValuesAndNormalizeReturnsNewInstance() {
         List<Bar> bars = List.of(
                 new Bar("2026-01-01", 100, 1000),
                 new Bar("2026-01-02", 101, 1200),
@@ -96,13 +96,13 @@ class FeatureVectorTest {
      * Analiz tipinin metrik kümelerini doğru kesmesi ve tam sürümle eşleşmesi.
      * <p>
      * Senaryo: bilinen ölçeklerde normalize edilmiş tipik bir vektör
-     * ({@code normalizeDegerleriOlcekler} ile aynı girdi) üç analiz tipiyle diziye
+     * ({@code normalizeScalesValues} ile aynı girdi) üç analiz tipiyle diziye
      * çevrilir. Beklenen davranış: {@code YALNIZCA_TEKNIK} yalnız ilk 6 (teknik)
      * değeri, {@code YALNIZCA_TEMEL} yalnız son 5 (temel) değeri içerir;
      * {@code TEKNIK_TEMEL} ise {@code toArray()} ile (11 değer) birebir aynıdır.
      */
     @Test
-    void analizTipiMetrikKumeleriniKesar() {
+    void slicesMetricSetsPerAnalysisType() {
         FeatureVector fv = new FeatureVector(50, 0, 0, 0, 0.02, 1, 25, 5, 2, 0.1, 0.2).normalize();
 
         double[] tech = fv.toArray(AnalysisType.TECHNICAL);
@@ -123,7 +123,7 @@ class FeatureVectorTest {
      * kümede ad sayısı {@code dimension(type)} ile eşittir.
      */
     @Test
-    void kolonAdlariDegerDuzeniyleEslesir() {
+    void columnNamesMatchValueOrder() {
         FeatureVector fv = new FeatureVector(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
 
         String[] techNames = FeatureVector.featureNames(AnalysisType.TECHNICAL);
@@ -149,7 +149,7 @@ class FeatureVectorTest {
      * döner; kolon adı dizileri de aynı uzunluktadır.
      */
     @Test
-    void dimensionAnalizTipiBasinaDogruBoyutuDoner() {
+    void dimensionReturnsCorrectSizePerAnalysisType() {
         assertEquals(6, FeatureVector.dimension(AnalysisType.TECHNICAL));
         assertEquals(5, FeatureVector.dimension(AnalysisType.FUNDAMENTAL));
         assertEquals(11, FeatureVector.dimension(AnalysisType.TECHNICAL_FUNDAMENTAL));

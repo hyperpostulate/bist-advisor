@@ -50,7 +50,7 @@ class AllocationPlannerTest {
      * boş kalır).
      */
     @Test
-    void satIsaretiAyniSemboluAlListesineKoymaz() {
+    void sellSignalDoesNotPutSameSymbolOnBuyList() {
         HoldingInput holding = new HoldingInput("ASTOR", 101, 200.0, 170.0, Labeler.BUY, 0.90);
         CandidateInput candidate = new CandidateInput("ASTOR", 170.0, 0.90, Labeler.BUY, true);
 
@@ -70,7 +70,7 @@ class AllocationPlannerTest {
      * yeni aday ZZZ dışarıda kalır ve yalnız AAA için 1 adet AL önerisi yapılır.
      */
     @Test
-    void mevcutPozisyonaEklemeSlotHarcamazVeYeniAdayDisaridaKalir() {
+    void addToExistingPositionSpendsNoSlotAndNewCandidateStaysOut() {
         HoldingInput h1 = new HoldingInput("AAA", 10, 100.0, 110.0, Labeler.HOLD, 0.60);
         HoldingInput h2 = new HoldingInput("BBB", 10, 100.0, 110.0, Labeler.HOLD, 0.60);
         HoldingInput h3 = new HoldingInput("CCC", 10, 100.0, 110.0, Labeler.HOLD, 0.60);
@@ -97,7 +97,7 @@ class AllocationPlannerTest {
      * önerisi üretilir (toplam 2 AL).
      */
     @Test
-    void acilanSlotYeniPozisyonaKullanilir() {
+    void openedSlotUsedForNewPosition() {
         HoldingInput sold = new HoldingInput("AAA", 10, 100.0, 80.0, Labeler.HOLD, 0.60);
         HoldingInput h2 = new HoldingInput("BBB", 10, 100.0, 110.0, Labeler.HOLD, 0.60);
         HoldingInput h3 = new HoldingInput("CCC", 10, 100.0, 110.0, Labeler.HOLD, 0.60);
@@ -124,7 +124,7 @@ class AllocationPlannerTest {
      * ayrılan 5.000 TL bütçe tek aday AKBNK'ye (10 TL) gider ve 500 lot AL önerilir.
      */
     @Test
-    void satislarinSerbestBiraktigiSermayeAlimButcesineEklenir() {
+    void capitalFreedBySellsAddedToBuyBudget() {
         HoldingInput sold = new HoldingInput("THYAO", 100, 240.0, 200.0, Labeler.HOLD, 0.60);
         CandidateInput buy = new CandidateInput("AKBNK", 10.0, 0.90, Labeler.BUY, false);
 
@@ -145,7 +145,7 @@ class AllocationPlannerTest {
      * {@code +4.17%} yüzdesiyle başlar.
      */
     @Test
-    void holdingSkoruDoldurulurVeNotYuzdeyiTasir() {
+    void holdingScoreFilledAndNoteCarriesPercentage() {
         HoldingInput holding = new HoldingInput("THYAO", 100, 240.0, 250.0, Labeler.HOLD, 0.42);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
@@ -166,7 +166,7 @@ class AllocationPlannerTest {
      * {@code plan.warnings()} tam 1 uyarı içerir.
      */
     @Test
-    void fiyatVerisiOlmayanPozisyondaSahteFiyatUretilmez() {
+    void noFakePriceForPositionWithoutPriceData() {
         HoldingInput holding = new HoldingInput("BOZUK", 100, 240.0, null, null, null);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
@@ -187,7 +187,7 @@ class AllocationPlannerTest {
      * yalnız GARAN kalır (1 adet AL önerisi).
      */
     @Test
-    void esikAltiAlimAdayiEle() {
+    void belowThresholdBuyCandidateEliminated() {
         CandidateInput below = new CandidateInput("AKBNK", 10.0, 0.50, Labeler.BUY, false);
         CandidateInput above = new CandidateInput("GARAN", 10.0, 0.80, Labeler.BUY, false);
 
@@ -207,7 +207,7 @@ class AllocationPlannerTest {
      * önerilir.
      */
     @Test
-    void modelSkoruEsigiGecmeyenPozisyonSatilmaz() {
+    void positionNotSoldWhenModelScoreBelowThreshold() {
         HoldingInput holding = new HoldingInput("THYAO", 100, 240.0, 228.0, Labeler.SELL, 0.20);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
@@ -224,7 +224,7 @@ class AllocationPlannerTest {
      * eşiği geçtiği için pozisyon SAT olarak işaretlenir.
      */
     @Test
-    void modelSkoruEsigiGecenPozisyonSatilir() {
+    void positionSoldWhenModelScorePassesThreshold() {
         HoldingInput holding = new HoldingInput("THYAO", 100, 240.0, 230.0, Labeler.SELL, 0.50);
 
         Plan plan = AllocationPlanner.plan(List.of(holding), List.of(),
@@ -241,7 +241,7 @@ class AllocationPlannerTest {
      * {@code Integer.MAX_VALUE} lot önerilmez; aday elenir ve AL listesi boş kalır.
      */
     @Test
-    void sifirFiyatliAdayTamsayiTasmasinaYolAcmaz() {
+    void zeroPricedCandidateDoesNotCauseIntegerOverflow() {
         CandidateInput zeroPrice = new CandidateInput("AKBNK", 0.0, 0.90, Labeler.BUY, false);
 
         Plan plan = AllocationPlanner.plan(List.of(), List.of(zeroPrice),

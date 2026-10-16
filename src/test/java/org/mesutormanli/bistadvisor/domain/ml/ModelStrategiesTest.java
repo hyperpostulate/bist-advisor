@@ -135,7 +135,7 @@ class ModelStrategiesTest {
      */
     @ParameterizedTest
     @EnumSource(ModelType.class)
-    void ayirtEdiciSiniflariOgrenir(ModelType type) {
+    void learnsDiscriminatingClasses(ModelType type) {
         double[][] x = concat(concat(blob(0.2, 30), blob(0.5, 30)), blob(0.8, 30));
         int[] y = concat(concat(labels(Labeler.BUY, 30), labels(Labeler.SELL, 30)), labels(Labeler.HOLD, 30));
         ModelStrategy strategy = ModelStrategyFactory.create(type);
@@ -159,7 +159,7 @@ class ModelStrategiesTest {
      */
     @ParameterizedTest
     @EnumSource(ModelType.class)
-    void eksikSinifHatasiFirlatmaz(ModelType type) {
+    void missingClassDoesNotThrow(ModelType type) {
         double[][] x = concat(blob(0.2, 30), blob(0.8, 30));
         int[] y = concat(labels(Labeler.BUY, 30), labels(Labeler.HOLD, 30));
         ModelStrategy strategy = ModelStrategyFactory.create(type);
@@ -181,7 +181,7 @@ class ModelStrategiesTest {
      */
     @ParameterizedTest
     @EnumSource(ModelType.class)
-    void tekSinifliEgitimSabitTahminDoner(ModelType type) {
+    void singleClassTrainingReturnsConstantPrediction(ModelType type) {
         double[][] x = blob(0.5, 30);
         int[] y = labels(Labeler.HOLD, 30);
         ModelStrategy strategy = ModelStrategyFactory.create(type);
@@ -201,7 +201,7 @@ class ModelStrategiesTest {
      * gösterir.
      */
     @Test
-    void egitilmisModelVarsayilanSinifiTutmaz() {
+    void trainedModelDoesNotHoldDefaultClass() {
         ModelStrategy strategy = new KnnStrategy();
         Prediction pred = strategy.predict(point(0.5));
         assertEquals(Labeler.HOLD, pred.classLabel());
@@ -217,7 +217,7 @@ class ModelStrategiesTest {
      * yakın örnek BUY kazanırdı).
      */
     @Test
-    void knnBesKomsuIleKararVerir() {
+    void knnDecidesWithFiveNeighbors() {
         List<double[]> xs = new ArrayList<>();
         List<Integer> ys = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
@@ -245,7 +245,7 @@ class ModelStrategiesTest {
      * {@code {0, 1, 0}} ortaya çıkar.
      */
     @Test
-    void classSpaceEtiketleriGeriDonusturur() {
+    void classSpaceRoundTripsLabels() {
         ClassSpace space = ClassSpace.of(new int[]{Labeler.HOLD, Labeler.BUY, Labeler.BUY});
         assertEquals(2, space.size());
         assertEquals(Labeler.BUY, space.label(0));
@@ -266,7 +266,7 @@ class ModelStrategiesTest {
      */
     @ParameterizedTest
     @EnumSource(ModelType.class)
-    void analizTipineGoreKesilmisBoyutlarlaCalisir(ModelType type) {
+    void worksWithDimensionsSlicedPerAnalysisType(ModelType type) {
         for (AnalysisType a : AnalysisType.values()) {
             int dim = FeatureVector.dimension(a);
             double[][] x = concat(concat(blob(0.2, 30, dim), blob(0.5, 30, dim)), blob(0.8, 30, dim));

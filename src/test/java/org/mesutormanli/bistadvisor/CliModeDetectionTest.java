@@ -22,7 +22,7 @@ class CliModeDetectionTest {
      * açılır.
      */
     @Test
-    void bosArgumanWebModudur() {
+    void emptyArgsIsWebMode() {
         assertFalse(CliMode.isCliInvocation(new String[]{}));
     }
 
@@ -35,7 +35,7 @@ class CliModeDetectionTest {
      * biçimde de {@code isCliInvocation} true döner ve CLI çalıştırıcı devreye girer.
      */
     @Test
-    void bilinenKomutlarCliBaslatir() {
+    void knownCommandsStartCli() {
         for (String cmd : CliMode.COMMANDS) {
             assertTrue(CliMode.isCliInvocation(new String[]{cmd}), cmd);
             assertTrue(CliMode.isCliInvocation(new String[]{cmd, "--budget=1"}), cmd);
@@ -50,7 +50,7 @@ class CliModeDetectionTest {
      * döner.
      */
     @Test
-    void cliBayragiCliBaslatir() {
+    void cliFlagStartsCli() {
         assertTrue(CliMode.isCliInvocation(new String[]{"--cli", "train"}));
     }
 
@@ -63,7 +63,7 @@ class CliModeDetectionTest {
      * döner; uygulama web modunda kalır.
      */
     @Test
-    void springArgumanlariWebModunuBozmaz() {
+    void springArgsDoNotBreakWebMode() {
         assertFalse(CliMode.isCliInvocation(new String[]{"--spring.profiles.active=prod"}));
         assertFalse(CliMode.isCliInvocation(new String[]{"--server.port=9090"}));
     }
@@ -78,7 +78,7 @@ class CliModeDetectionTest {
      * döner.
      */
     @Test
-    void cliBayragiArgumanlardanCikarilir() {
+    void cliFlagStrippedFromArgs() {
         assertArrayEquals(new String[]{"status"},
                 CliMode.stripCliMarker(new String[]{"--cli", "status"}));
         assertArrayEquals(new String[]{"init", "--budget=50000"},

@@ -26,7 +26,7 @@ class PortfolioTest {
      * düşülür.
      */
     @Test
-    void ayniSembolAlimlariAgirlikliOrtalamaMaliyetleBirlesir() {
+    void buysOfSameSymbolMergeWithWeightedAverageCost() {
         Portfolio p = new Portfolio();
         p.initialize(50_000, List.of());
 
@@ -49,7 +49,7 @@ class PortfolioTest {
      * portföy 5 pozisyonda kalır.
      */
     @Test
-    void slotSiniriDoluncaYeniSembolReddedilir() {
+    void newSymbolRejectedWhenSlotLimitFull() {
         Portfolio p = new Portfolio();
         p.initialize(1_000_000, List.of());
         for (String sym : List.of("AAA", "BBB", "CCC", "DDD", "EEE")) {
@@ -71,7 +71,7 @@ class PortfolioTest {
      * Beklenen davranış: ikinci alım tolerans sayesinde kabul edilir.
      */
     @Test
-    void nakitKontroluToleransliCalisir() {
+    void cashCheckWorksWithinTolerance() {
         Portfolio p = new Portfolio();
         p.initialize(1_000, List.of());
 
@@ -90,7 +90,7 @@ class PortfolioTest {
      * 40×250=10.000 TL brüt tutarla artar ve tam satımda pozisyon silinir.
      */
     @Test
-    void kismiSatisMaliyetiKorurBrutTutarNakdeYansir() {
+    void partialSellPreservesCostAndGrossAmountFlowsToCash() {
         Portfolio p = new Portfolio();
         p.initialize(100_000, List.of());
         p.apply(new Transaction("THYAO", TransactionAction.AL, 100, 240));
@@ -114,7 +114,7 @@ class PortfolioTest {
      * iki satış reddedilir, nakit ve pozisyon değişmez.
      */
     @Test
-    void gecersizSatislarReddedilir() {
+    void invalidSellsRejected() {
         Portfolio p = new Portfolio();
         p.initialize(100_000, List.of());
         p.apply(new Transaction("THYAO", TransactionAction.AL, 100, 240));
@@ -138,7 +138,7 @@ class PortfolioTest {
      * ({@code INVALID_ACTION} yalnız aksiyon dışında her şey geçerliyse döner).
      */
     @Test
-    void dogrulamaSirasiEskiDavranisiKorur() {
+    void validationOrderPreservesLegacyBehavior() {
         Portfolio p = new Portfolio();
         p.initialize(100_000, List.of());
 
@@ -161,7 +161,7 @@ class PortfolioTest {
      * 500 TL olarak aynen kalır.
      */
     @Test
-    void restoreNakdiYenidenHesaplamaz() {
+    void restoreDoesNotRecomputeCash() {
         Portfolio p = Portfolio.restore(1_000, 500, List.of(new Position("THYAO", 10, 90)));
 
         assertEquals(500, p.availableCash(), 0.01);
@@ -178,7 +178,7 @@ class PortfolioTest {
      * {@code maxPositions()} ile 5 olarak görünür.
      */
     @Test
-    void slotHesaplariDogruHesaplanir() {
+    void slotCountsComputedCorrectly() {
         Portfolio p = new Portfolio();
         p.initialize(1_000_000, List.of(new Position("AAA", 1, 1), new Position("BBB", 1, 1),
                 new Position("CCC", 1, 1), new Position("DDD", 1, 1), new Position("EEE", 1, 1)));

@@ -50,7 +50,7 @@ class ApplicationContextTest {
      * erişilebilir olur.
      */
     @Test
-    void baglamKatmanBilesenleriyleKurulur() {
+    void contextBuiltWithLayerComponents() {
         assertNotNull(portfolioService);
         assertNotNull(analysisService);
         assertNotNull(advisorController);

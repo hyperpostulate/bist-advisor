@@ -56,7 +56,7 @@ class ConsoleReportRendererTest {
      * satırı sırasıyla üretilir.
      */
     @Test
-    void gunlukOneriRaporuEskiMetinlerleUretilir() {
+    void dailyRecommendationReportProducedWithLegacyText() {
         AnalysisResult r = new AnalysisResult(
                 List.of(new Recommendation(1, "THYAO", Signal.TUT, 60, 250.0, 0.42, "+4.17%"),
                         new Recommendation(2, "ASELS", Signal.SAT, 50, null, null, "veri yok")),
@@ -87,7 +87,7 @@ class ConsoleReportRendererTest {
      * {@code "(Al önerisi yok)"} satırı bulunur.
      */
     @Test
-    void bosAlimListesindeEskiUyariSatiriUretilir() {
+    void emptyBuyListProducesLegacyWarningLine() {
         renderer.renderReport(new AnalysisResult(List.of(), List.of(), 0, 0, 5, 5, List.of()),
                 List.of());
 
@@ -104,7 +104,7 @@ class ConsoleReportRendererTest {
      * mod=BALANCED, model=RANDOM_FOREST, analiz=TECHNICAL"} satırı üretilir.
      */
     @Test
-    void initOzetiEskiMetinleUretilir() {
+    void initSummaryProducedWithLegacyText() {
         renderer.renderInitSummary(50_000, 8_450, "BALANCED", "RANDOM_FOREST", "TECHNICAL");
 
         assertEquals("Portföy kaydedildi: sermaye=50000.0 TL, nakit=8450 TL, "
@@ -120,7 +120,7 @@ class ConsoleReportRendererTest {
      * {@code "  THYAO 10 lot @ 240.0"} pozisyon satırı sırasıyla üretilir.
      */
     @Test
-    void statusSatirlariEskiMetinlerleUretilir() {
+    void statusLinesProducedWithLegacyText() {
         PortfolioSnapshot s = new PortfolioSnapshot();
         s.budget = 50_000;
         s.cash = 8_450;
@@ -147,7 +147,7 @@ class ConsoleReportRendererTest {
      * satırı üretilir; hata yokken başlık basılmaz.
      */
     @Test
-    void confirmOzetiEskiMetinlerleUretilir() {
+    void confirmSummaryProducedWithLegacyText() {
         renderer.renderConfirmSummary(1, List.of("Islem basarisiz: THYAO,SAT,x,2"));
 
         List<String> lines = lines();
@@ -168,7 +168,7 @@ class ConsoleReportRendererTest {
      * ve {@code "Model egitildi (bellekte): ..."} metinleri üretilir.
      */
     @Test
-    void uyariVeEgitimSatirlariEskiMetinlerleUretilir() {
+    void warningAndTrainingLinesProducedWithLegacyText() {
         renderer.renderWarning("Negatif nakit (-1000 TL)");
         renderer.renderTrainStart("RANDOM_FOREST", "TECHNICAL", "BIST_30");
         renderer.renderTrainDone("random_forest", "technical");

@@ -23,7 +23,7 @@ class PortfolioValidatorTest {
      * {@code "Gecersiz butce: -5.0"} hatası üretilir ve sonuç geçersizdir.
      */
     @Test
-    void gecersizButceHataMesajiUretir() {
+    void invalidBudgetProducesErrorMessage() {
         ValidationResult vr = PortfolioValidator.structural(-5, List.of());
 
         assertFalse(vr.ok());
@@ -40,7 +40,7 @@ class PortfolioValidatorTest {
      * {@code "THYAO: birim maliyet pozitif olmali (0.0)"} mesajları üretilir.
      */
     @Test
-    void taslakBiçimMesajlariKorunur() {
+    void draftFormatMessagesPreserved() {
         ValidationResult vr = PortfolioValidator.structural(50_000, List.of(
                 new PositionDraft(null, 1, 1),
                 new PositionDraft("thy@ao", 1, 1),
@@ -63,7 +63,7 @@ class PortfolioValidatorTest {
      * ile sonuçlanır.
      */
     @Test
-    void mesajlarBirlestirilirVeGecerliTaslakOnaylanir() {
+    void messagesMergedAndValidDraftApproved() {
         ValidationResult vr = PortfolioValidator.structural(-5,
                 List.of(new PositionDraft("THYAO", 0, 1)));
 
@@ -84,7 +84,7 @@ class PortfolioValidatorTest {
      * mesajları üretilir; sorunsuz portföyde {@code ok()} true döner.
      */
     @Test
-    void kuralIhlalleriEskiMesajlarlaBildirilir() {
+    void ruleViolationsReportedWithLegacyMessages() {
         Portfolio negativeCash = new Portfolio();
         negativeCash.initialize(1_000, List.of(new Position("THYAO", 10, 200)));
         ValidationResult cashResult = PortfolioValidator.invariants(negativeCash);

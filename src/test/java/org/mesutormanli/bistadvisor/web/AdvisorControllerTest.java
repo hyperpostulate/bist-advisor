@@ -72,7 +72,7 @@ class AdvisorControllerTest {
      * anahtarları doğru değerlerle bulunur.
      */
     @Test
-    void configYapilandirmayiArayuzAnahtarlariylaDonderir() throws Exception {
+    void configReturnedWithUiKeys() throws Exception {
         when(portfolioService.riskProfile()).thenReturn(RiskProfile.BALANCED);
         when(portfolioService.modelType()).thenReturn(ModelType.RANDOM_FOREST);
         when(portfolioService.analysisType()).thenReturn(AnalysisType.TECHNICAL_FUNDAMENTAL);
@@ -101,7 +101,7 @@ class AdvisorControllerTest {
      * {@code lots} ve {@code avgCost} alanları korunur.
      */
     @Test
-    void portfolioAnlikGorunumuAlanAdlariylaDonderir() throws Exception {
+    void portfolioViewReturnedWithFieldNames() throws Exception {
         PortfolioSnapshot s = new PortfolioSnapshot();
         s.budget = 50_000;
         s.cash = 8_450;
@@ -135,7 +135,7 @@ class AdvisorControllerTest {
      * {@code "Gecersiz butce: -5.0"} bulunur; {@code update} hiç çağrılmaz.
      */
     @Test
-    void gecersizTaslakHataDonderirVeKaydetmez() throws Exception {
+    void invalidDraftReturnsErrorAndDoesNotSave() throws Exception {
         mockMvc.perform(post("/api/portfolio")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"budget\":-5,\"positions\":[]}"))
@@ -156,7 +156,7 @@ class AdvisorControllerTest {
      * ({@code TECHNICAL}) aktarılır.
      */
     @Test
-    void gecerliTaslakOkDonderirVeKanonikTipIleKaydeder() throws Exception {
+    void validDraftReturnsOkAndSavesWithCanonicalType() throws Exception {
         when(portfolioService.validate()).thenReturn(ValidationResult.OK);
         when(bistIndices.containsIndex("BIST_30")).thenReturn(true);
 
@@ -182,7 +182,7 @@ class AdvisorControllerTest {
      * ihlal metniyle {@code message} alanını taşır.
      */
     @Test
-    void kuralIhaliKayittaWarningDonderir() throws Exception {
+    void ruleViolationReturnsWarningOnSave() throws Exception {
         when(portfolioService.validate()).thenReturn(
                 new ValidationResult(List.of("Negatif nakit (-1000 TL)")));
 
@@ -203,7 +203,7 @@ class AdvisorControllerTest {
      * yanıt {@code {"status":"ok","applied":1,"failed":1}} olur.
      */
     @Test
-    void confirmIslemSonuclariniSayar() throws Exception {
+    void confirmCountsTransactionOutcomes() throws Exception {
         when(portfolioService.apply("THYAO", "AL", 10, 240.0)).thenReturn(true);
         when(portfolioService.apply("GARAN", "SAT", 5, 100.0)).thenReturn(false);
 
@@ -229,7 +229,7 @@ class AdvisorControllerTest {
      * ve {@code note} anahtarları bulunur (sinyal metin etiketiyle yazılır).
      */
     @Test
-    void analizYanitiOneriAnahtalariniKorur() throws Exception {
+    void analysisResponsePreservesRecommendationKeys() throws Exception {
         Recommendation sell = new Recommendation(1, "THYAO", Signal.SAT, 60, 250.0, 0.42, "+4.17%");
         Recommendation buy = new Recommendation(2, "AKBNK", Signal.AL, 500, 10.0, 0.90, "risk payi");
         when(analysisService.analyze()).thenReturn(new AnalysisResult(
@@ -260,7 +260,7 @@ class AdvisorControllerTest {
      * AL alım; TUT holding dışarıda kalır.
      */
     @Test
-    void pendingYalnizUygulanabilirIslemleriDonderir() throws Exception {
+    void pendingReturnsOnlyApplicableTransactions() throws Exception {
         Recommendation sell = new Recommendation(1, "THYAO", Signal.SAT, 60, 250.0, 0.42, "+4.17%");
         Recommendation hold = new Recommendation(2, "ASELS", Signal.TUT, 50, 351.0, 0.60, "+2.00%");
         Recommendation buy = new Recommendation(3, "AKBNK", Signal.AL, 500, 10.0, 0.90, "risk payi");
@@ -283,7 +283,7 @@ class AdvisorControllerTest {
      * {@code {"status":"error","message":...}} bulunur; mesaj arayüzde gösterilebilir.
      */
     @Test
-    void analizHatasindaAnlasilirHataGovdesiDoner() throws Exception {
+    void analysisErrorReturnsReadableErrorBody() throws Exception {
         when(analysisService.analyze())
                 .thenThrow(new IllegalStateException("canli egitim verisi uretilemedi (endeks: BIST_30)"));
 

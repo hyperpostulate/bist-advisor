@@ -22,7 +22,7 @@ class AnalysisTypeTest {
      * gelir.
      */
     @Test
-    void fromKeyTumSozDizimleriniCozer() {
+    void fromKeyResolvesAllSyntaxes() {
         assertEquals(AnalysisType.TECHNICAL, AnalysisType.fromKey("technical"));
         assertEquals(AnalysisType.TECHNICAL, AnalysisType.fromKey("TECHNICAL"));
         assertEquals(AnalysisType.TECHNICAL, AnalysisType.fromKey("teknik"));
@@ -42,7 +42,7 @@ class AnalysisTypeTest {
      * eksik/geçersiz alanlar mevcut (tüm metrikli) davranışı bozmaz.
      */
     @Test
-    void fromKeyBilinmeyenGirdideVarsayilanaDuser() {
+    void fromKeyFallsBackToDefaultOnUnknownInput() {
         assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, AnalysisType.fromKey(null));
         assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, AnalysisType.fromKey(""));
         assertEquals(AnalysisType.TECHNICAL_FUNDAMENTAL, AnalysisType.fromKey("olmayan_tip"));
@@ -56,7 +56,7 @@ class AnalysisTypeTest {
      * yalnız temel modda teknik bayrak kapalı, birleşik modda ikisi birden açıktır.
      */
     @Test
-    void metrikKumesiBayraklariTutarlidir() {
+    void metricSetFlagsAreConsistent() {
         assertTrue(AnalysisType.TECHNICAL.usesTechnical());
         assertFalse(AnalysisType.TECHNICAL.usesFundamental());
         assertFalse(AnalysisType.FUNDAMENTAL.usesTechnical());

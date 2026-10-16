@@ -77,7 +77,7 @@ class PriceSeriesServiceTest {
      * kaynaktan veri çekmez ({@code calls} 0 kalır) ve önbellekteki seriyi döndürür.
      */
     @Test
-    void tazeOnbellekKaynakCagirmaz() {
+    void freshCacheDoesNotCallSource() {
         FakeCache cache = new FakeCache();
         FakeSource source = new FakeSource();
         cache.fresh = true;
@@ -99,7 +99,7 @@ class PriceSeriesServiceTest {
      * seri okunarak döndürülür.
      */
     @Test
-    void bayatOnbellekKaynakTazeler() {
+    void staleCacheRefreshesFromSource() {
         FakeCache cache = new FakeCache();
         FakeSource source = new FakeSource();
         List<Bar> fetched = List.of(new Bar("2026-01-01", 240, 1000),
@@ -123,7 +123,7 @@ class PriceSeriesServiceTest {
      * kalır); boş okuma sonucu döner.
      */
     @Test
-    void bosYanitOnbellegeYazilmaz() {
+    void emptyResponseNotWrittenToCache() {
         FakeCache cache = new FakeCache();
         FakeSource source = new FakeSource();
 

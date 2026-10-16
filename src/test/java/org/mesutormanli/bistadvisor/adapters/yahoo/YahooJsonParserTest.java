@@ -28,7 +28,7 @@ class YahooJsonParserTest {
      * mum atlanır. Hacim alanı hiç yoksa hacim 0 okunur.
      */
     @Test
-    void bosKapanislarAtlanirEksikHacimSifirdir() {
+    void emptyClosesSkippedMissingVolumeIsZero() {
         String json = """
                 {"chart":{"result":[{"timestamp":[1704067200,1704153600],
                 "indicators":{"quote":[{"close":[240.5,null],"volume":[1200,null]}]}}]}}""";
@@ -55,7 +55,7 @@ class YahooJsonParserTest {
      * temettü verimi 0,03, kâr büyümesi 0,2 ve ROE 0,15 olarak okunur.
      */
     @Test
-    void temelGostergelerModullerdenOkunur() {
+    void fundamentalsReadFromModules() {
         String json = """
                 {"quoteSummary":{"result":[{"summaryDetail":{
                 "trailingPE":{"raw":8.5},"priceToBook":{"raw":1.2},"dividendYield":{"raw":0.03}},
@@ -81,7 +81,7 @@ class YahooJsonParserTest {
      * PD/DD 0 kalır.
      */
     @Test
-    void yedekAlanlaraDusulurHamOlmayanDegerlerSifirdir() {
+    void fallsBackToAlternateFieldsNonRawValuesZero() {
         String json = """
                 {"quoteSummary":{"result":[{"summaryDetail":{
                 "trailingPE":{"raw":-1.0},"priceToBook":{"fmt":"1.2"}},
@@ -104,7 +104,7 @@ class YahooJsonParserTest {
      * temel göstergeler {@link Fundamentals#EMPTY} döner.
      */
     @Test
-    void bozukGovdelerIstisnaYaymaz() {
+    void corruptBodiesDoNotThrow() {
         assertTrue(YahooJsonParser.parsePrices("bozuk").isEmpty());
         assertTrue(YahooJsonParser.parsePrices("{}").isEmpty());
         assertEquals(Fundamentals.EMPTY, YahooJsonParser.parseFundamentals("bozuk"));

@@ -489,49 +489,49 @@ mvn test -Dtest=BistAdvisorTest
 
 `FeatureVectorTest` normalizasyon sözleşmesini doğrular:
 
-- `normalizeDegerleriOlcekler()`: özniteliklerin sabit ölçeklerle [0,1]'e indirilmesi
-- `normalizeAsiriDegerleriKisar()`: uç değerlerin [0,1]'e kırpılması
-- `fromBarsHamDegerleriUretirVeNormalizeAyriNesneDoner()`: `normalize()`'ın değişmez (immutable) yeni nesne döndürmesi
-- `analizTipiMetrikKumeleriniKesar()`: teknik (ilk 6) ve temel (son 5) alt kümelerinin kesilmesi
-- `kolonAdlariDegerDuzeniyleEslesir()`: kolon adlarının değer dizisiyle sıradaşlığı
-- `dimensionAnalizTipiBasinaDogruBoyutuDoner()`: analiz tipi başına 6/5/11 boyut sayısı
+- `normalizeScalesValues()`: özniteliklerin sabit ölçeklerle [0,1]'e indirilmesi
+- `normalizeClampsExtremeValues()`: uç değerlerin [0,1]'e kırpılması
+- `fromBarsProducesRawValuesAndNormalizeReturnsNewInstance()`: `normalize()`'ın değişmez (immutable) yeni nesne döndürmesi
+- `slicesMetricSetsPerAnalysisType()`: teknik (ilk 6) ve temel (son 5) alt kümelerinin kesilmesi
+- `columnNamesMatchValueOrder()`: kolon adlarının değer dizisiyle sıradaşlığı
+- `dimensionReturnsCorrectSizePerAnalysisType()`: analiz tipi başına 6/5/11 boyut sayısı
 
 `ModelStrategiesTest` üç modelin ortak davranışını doğrular (model tipi başına parametrize):
 
-- `ayirtEdiciSiniflariOgrenir()`: AL/SAT/TUT kümelerinin ayırt edilmesi
-- `eksikSinifHatasiFirlatmaz()`: eğitim setinde bir sınıf eksikken istisna fırlatılmaması
-- `tekSinifliEgitimSabitTahminDoner()`: tek sınıflı eğitimde sabit tahmin
-- `knnBesKomsuIleKararVerir()`: KNN'in k=5 ile çoğunluk sınıfını seçmesi (k=1 olsaydı tersi olurdu)
-- `classSpaceEtiketleriGeriDonusturur()`: `ClassSpace` sıkıştırma/geri dönüşüm eşlemesi
-- `analizTipineGoreKesilmisBoyutlarlaCalisir()`: üç analiz tipinin matris genişlikleriyle eğitim/tahmin
+- `learnsDiscriminatingClasses()`: AL/SAT/TUT kümelerinin ayırt edilmesi
+- `missingClassDoesNotThrow()`: eğitim setinde bir sınıf eksikken istisna fırlatılmaması
+- `singleClassTrainingReturnsConstantPrediction()`: tek sınıflı eğitimde sabit tahmin
+- `knnDecidesWithFiveNeighbors()`: KNN'in k=5 ile çoğunluk sınıfını seçmesi (k=1 olsaydı tersi olurdu)
+- `classSpaceRoundTripsLabels()`: `ClassSpace` sıkıştırma/geri dönüşüm eşlemesi
+- `worksWithDimensionsSlicedPerAnalysisType()`: üç analiz tipinin matris genişlikleriyle eğitim/tahmin
 
 `AnalysisTypeTest` çözümleme sözleşmesini doğrular:
 
-- `fromKeyTumSozDizimleriniCozer()`: anahtar, etiket ve takma adların çözümlenmesi
-- `fromKeyBilinmeyenGirdideVarsayilanaDuser()`: bilinmeyen girdide `TECHNICAL_FUNDAMENTAL` varsayılanı
-- `metrikKumesiBayraklariTutarlidir()`: teknik/temel kullanım bayrakları (yalnız teknik modda temelin hiç okunmaması)
+- `fromKeyResolvesAllSyntaxes()`: anahtar, etiket ve takma adların çözümlenmesi
+- `fromKeyFallsBackToDefaultOnUnknownInput()`: bilinmeyen girdide `TECHNICAL_FUNDAMENTAL` varsayılanı
+- `metricSetFlagsAreConsistent()`: teknik/temel kullanım bayrakları (yalnız teknik modda temelin hiç okunmaması)
 
 `PortfolioServiceTest` portföy muhasebesini doğrular (geçici `state.yaml` dosyasıyla):
 
-- `initPortfolioNakdiSermayedenKurar()`: sermaye − maliyet = nakit kurgusu
-- `kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir()`: kısmi satış + gerçekleşen kârın nakde işlenmesi
-- `tamSatisPozisyonuKaldirirVeKariYansitir()` / `zararliSatisNakdiAzaltir()`: tam satışta kâr ve zarar muhasebesi
-- `fazlaSatisReddedilir()` / `nakitUzerindeAlimReddedilir()`: lot ve nakit sınırları
-- `negatifNakitDogrulamaylaBildirilir()`: sermaye aşımı uyarısı
-- `updatePortfolioButceDegisikliginiNakdeIsler()` / `updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler()`: manuel güncelleme mutabakatı
-- `analizTipiInitIleAyarlanirVeYamlaYazilir()`: analiz tipinin ayarlanıp `state.yaml`'a yazılması
-- `updatePortfolioAnalizTipiniGunceller()`: analiz tipi güncelleme + `null`'da koruma + takma ad çözümü
-- `analizTipiAlanOlmayanYamldaVarsayilanaDuser()`: `analysisType` alanı olmayan eski YAML'da varsayılana düşülmesi
-- `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` alanlarının aynen yüklenmesi
+- `initPortfolioSetsCashFromCapital()`: sermaye − maliyet = nakit kurgusu
+- `partialSellShrinksPositionAndRealizedProfitFlowsToCash()`: kısmi satış + gerçekleşen kârın nakde işlenmesi
+- `fullSellRemovesPositionAndReflectsProfit()` / `lossMakingSellReducesCash()`: tam satışta kâr ve zarar muhasebesi
+- `excessiveSellRejected()` / `buyBeyondCashRejected()`: lot ve nakit sınırları
+- `negativeCashReportedByValidation()`: sermaye aşımı uyarısı
+- `updatePortfolioAppliesBudgetChangeToCash()` / `updatePortfolioAppliesPositionDeltaToCashByCost()`: manuel güncelleme mutabakatı
+- `analysisTypeSetByInitAndWrittenToYaml()`: analiz tipinin ayarlanıp `state.yaml`'a yazılması
+- `updatePortfolioUpdatesAnalysisType()`: analiz tipi güncelleme + `null`'da koruma + takma ad çözümü
+- `missingAnalysisTypeFieldInYamlFallsBackToDefault()`: `analysisType` alanı olmayan eski YAML'da varsayılana düşülmesi
+- `yamlFileFieldsLoadedVerbatim()`: `state.yaml` alanlarının aynen yüklenmesi
 
 `AllocationPlannerTest` karar kurallarını doğrular:
 
-- `satIsaretiAyniSemboluAlListesineKoymaz()`: stop-loss edilen sembolün aynı turda AL'a girmemesi
-- `mevcutPozisyonaEklemeSlotHarcamazVeYeniAdayDisaridaKalir()` / `acilanSlotYeniPozisyonaKullanilir()`: slot muhasebesi
-- `satislarinSerbestBiraktigiSermayeAlimButcesineEklenir()`: satış tutarının alım bütçesine katılması
-- `fiyatVerisiOlmayanPozisyondaSahteFiyatUretilmez()`: "veri yok" davranışı ve uyarısı
-- `holdingSkoruDoldurulurVeNotYuzdeyiTasir()`: skor/not içerikleri
-- `esikAltiAlimAdayiEle()` / `modelSkoruEsigiGecmeyenPozisyonSatilmaz()` / `modelSkoruEsigiGecenPozisyonSatilir()`: eşik kapıları
+- `sellSignalDoesNotPutSameSymbolOnBuyList()`: stop-loss edilen sembolün aynı turda AL'a girmemesi
+- `addToExistingPositionSpendsNoSlotAndNewCandidateStaysOut()` / `openedSlotUsedForNewPosition()`: slot muhasebesi
+- `capitalFreedBySellsAddedToBuyBudget()`: satış tutarının alım bütçesine katılması
+- `noFakePriceForPositionWithoutPriceData()`: "veri yok" davranışı ve uyarısı
+- `holdingScoreFilledAndNoteCarriesPercentage()`: skor/not içerikleri
+- `belowThresholdBuyCandidateEliminated()` / `positionNotSoldWhenModelScoreBelowThreshold()` / `positionSoldWhenModelScorePassesThreshold()`: eşik kapıları
 
 `ScoreGateTest` eşik yorumlamasını doğrular: KNN'de eşiklerin oy ızgarasına (1/5 paylar) tavanlı yuvarlanması, tek komşu oyunun karar üretememesi, RandomForest/SVM'de temel eşiğin korunması.
 
@@ -1077,40 +1077,40 @@ mvn test -Dtest=BistAdvisorTest
 
 `FeatureVectorTest` verifies the normalization contract:
 
-- `normalizeDegerleriOlcekler()`: features scaled into [0,1] with fixed divisors
-- `normalizeAsiriDegerleriKisar()`: extreme values clamped into [0,1]
-- `fromBarsHamDegerleriUretirVeNormalizeAyriNesneDoner()`: `normalize()` returns a new immutable instance
-- `analizTipiMetrikKumeleriniKesar()`: technical (first 6) and fundamental (last 5) subsets are sliced out
-- `kolonAdlariDegerDuzeniyleEslesir()`: column names match the value array order
-- `dimensionAnalizTipiBasinaDogruBoyutuDoner()`: 6/5/11 dimensionality per analysis type
+- `normalizeScalesValues()`: features scaled into [0,1] with fixed divisors
+- `normalizeClampsExtremeValues()`: extreme values clamped into [0,1]
+- `fromBarsProducesRawValuesAndNormalizeReturnsNewInstance()`: `normalize()` returns a new immutable instance
+- `slicesMetricSetsPerAnalysisType()`: technical (first 6) and fundamental (last 5) subsets are sliced out
+- `columnNamesMatchValueOrder()`: column names match the value array order
+- `dimensionReturnsCorrectSizePerAnalysisType()`: 6/5/11 dimensionality per analysis type
 
 `ModelStrategiesTest` verifies the shared behavior of all three models (parameterized per model type):
 
-- `ayirtEdiciSiniflariOgrenir()`: BUY/SELL/HOLD clusters are distinguished
-- `eksikSinifHatasiFirlatmaz()`: no exception when a class is missing from the training set
-- `tekSinifliEgitimSabitTahminDoner()`: constant prediction for single-class training
-- `knnBesKomsuIleKararVerir()`: KNN picks the majority class with k=5 (k=1 would pick the other)
-- `classSpaceEtiketleriGeriDonusturur()`: `ClassSpace` compress/decompress round-trip
-- `analizTipineGoreKesilmisBoyutlarlaCalisir()`: training/prediction with the matrix widths of all three analysis types
+- `learnsDiscriminatingClasses()`: BUY/SELL/HOLD clusters are distinguished
+- `missingClassDoesNotThrow()`: no exception when a class is missing from the training set
+- `singleClassTrainingReturnsConstantPrediction()`: constant prediction for single-class training
+- `knnDecidesWithFiveNeighbors()`: KNN picks the majority class with k=5 (k=1 would pick the other)
+- `classSpaceRoundTripsLabels()`: `ClassSpace` compress/decompress round-trip
+- `worksWithDimensionsSlicedPerAnalysisType()`: training/prediction with the matrix widths of all three analysis types
 
 `AnalysisTypeTest` verifies the resolution contract:
 
-- `fromKeyTumSozDizimleriniCozer()`: keys, labels and aliases are resolved
-- `fromKeyBilinmeyenGirdideVarsayilanaDuser()`: unknown input falls back to `TECHNICAL_FUNDAMENTAL`
-- `metrikKumesiBayraklariTutarlidir()`: technical/subset usage flags (fundamentals never read in technical-only mode)
+- `fromKeyResolvesAllSyntaxes()`: keys, labels and aliases are resolved
+- `fromKeyFallsBackToDefaultOnUnknownInput()`: unknown input falls back to `TECHNICAL_FUNDAMENTAL`
+- `metricSetFlagsAreConsistent()`: technical/subset usage flags (fundamentals never read in technical-only mode)
 
 `PortfolioServiceTest` verifies portfolio accounting (with a temp `state.yaml`):
 
-- `initPortfolioNakdiSermayedenKurar()`: budget − cost = cash setup
-- `kismiSatisPozisyonuKuculturVeGerceklesmisKarNakdeYansir()`: partial sell + realized P/L reflected in cash
-- `tamSatisPozisyonuKaldirirVeKariYansitir()` / `zararliSatisNakdiAzaltir()`: full-sell profit/loss accounting
-- `fazlaSatisReddedilir()` / `nakitUzerindeAlimReddedilir()`: lot and cash limits
-- `negatifNakitDogrulamaylaBildirilir()`: negative-cash warning
-- `updatePortfolioButceDegisikliginiNakdeIsler()` / `updatePortfolioPozisyonFarkiniMaliyetKadarNakdeIsler()`: manual-update reconciliation
-- `analizTipiInitIleAyarlanirVeYamlaYazilir()`: analysis type set via init and written to `state.yaml`
-- `updatePortfolioAnalizTipiniGunceller()`: analysis type update + preservation on `null` + alias resolution
-- `analizTipiAlanOlmayanYamldaVarsayilanaDuser()`: legacy YAML without an `analysisType` field falls back to the default
-- `yamlDosyasiAlanlariAynenYuklenir()`: `state.yaml` fields are loaded as-is
+- `initPortfolioSetsCashFromCapital()`: budget − cost = cash setup
+- `partialSellShrinksPositionAndRealizedProfitFlowsToCash()`: partial sell + realized P/L reflected in cash
+- `fullSellRemovesPositionAndReflectsProfit()` / `lossMakingSellReducesCash()`: full-sell profit/loss accounting
+- `excessiveSellRejected()` / `buyBeyondCashRejected()`: lot and cash limits
+- `negativeCashReportedByValidation()`: negative-cash warning
+- `updatePortfolioAppliesBudgetChangeToCash()` / `updatePortfolioAppliesPositionDeltaToCashByCost()`: manual-update reconciliation
+- `analysisTypeSetByInitAndWrittenToYaml()`: analysis type set via init and written to `state.yaml`
+- `updatePortfolioUpdatesAnalysisType()`: analysis type update + preservation on `null` + alias resolution
+- `missingAnalysisTypeFieldInYamlFallsBackToDefault()`: legacy YAML without an `analysisType` field falls back to the default
+- `yamlFileFieldsLoadedVerbatim()`: `state.yaml` fields are loaded as-is
 
 `PortfolioTest` + `PortfolioValidatorTest` verify the portfolio core: weighted average cost, slot/tolerance checks, sell rules, validation order (symbol → lots → price → action) and validation messages kept verbatim.
 
